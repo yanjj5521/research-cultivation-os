@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4e7d5">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+</head>
+<body class="theme-{{ ui_accent }} density-{{ ui_density }} scene-{{ ui_scene }}">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark">道</span>
+      <span class="brand-copy"><strong>{{ site_name }}</strong><small>{{ ui_home_motto }}</small></span>
+    </a>
+
+    <a class="player-card" href="{{ url_for('cultivation_page') }}">
+      <span class="player-avatar">{{ nav_realm.name[:1] }}</span>
+      <span class="player-copy"><small>{{ researcher_name }}</small><strong>{{ nav_realm.name }}</strong></span>
+      <span class="player-level">{{ nav_xp }} XP · ◆{{ nav_assets.spirit_stone }}</span>
+      <span class="mini-progress"><i style="width: {{ nav_realm.progress }}%"></i></span>
+    </a>
+
+    <nav class="side-nav" aria-label="主导航">
+      <div class="nav-group">
+        <span class="nav-label">今天</span>
+        <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><b>⌂</b><span>{{ nav_labels.dashboard }}</span></a>
+        <a class="nav-item {% if active_page == 'daily' %}active{% endif %}" href="{{ url_for('daily_page') }}"><b>✓</b><span>{{ nav_labels.daily }}</span></a>
+        <a class="nav-item {% if active_page == 'review' %}active{% endif %}" href="{{ url_for('review_page') }}"><b>忆</b><span>{{ nav_labels.review }}</span></a>
+        <a class="nav-item {% if active_page == 'alchemy' %}active{% endif %}" href="{{ url_for('alchemy_page') }}"><b>丹</b><span>{{ nav_labels.alchemy }}</span></a>
+        <a class="nav-item {% if active_page == 'world' %}active{% endif %}" href="{{ url_for('world_page') }}"><b>府</b><span>{{ nav_labels.world }}</span></a>
+        <a class="nav-item {% if active_page == 'profile' %}active{% endif %}" href="{{ url_for('profile_page') }}"><b>我</b><span>{{ nav_labels.profile }}</span></a>
+        <a class="nav-item {% if active_page == 'assistant' %}active{% endif %}" href="{{ url_for('assistant_page') }}"><b>✦</b><span>{{ nav_labels.assistant }}</span></a>
+        <a class="nav-item {% if active_page == 'online' %}active{% endif %}" href="{{ url_for('online_page') }}"><b>联</b><span>{{ nav_labels.online }}</span>{% if hub_configured %}<i class="online-dot" title="已配置联机中心"></i>{% endif %}</a>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">行动</span>
+        <a class="nav-item {% if active_page == 'plans' %}active{% endif %}" href="{{ url_for('plans_page') }}"><b>日</b><span>{{ nav_labels.plans }}</span></a>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">资料</span>
+        <a class="nav-item {% if active_page == 'library' %}active{% endif %}" href="{{ url_for('library') }}"><b>藏</b><span>{{ nav_labels.library }}</span></a>
+        <a class="nav-item {% if active_page == 'folders' %}active{% endif %}" href="{{ url_for('folders_page') }}"><b>夹</b><span>{{ nav_labels.folders }}</span></a>
+        <a class="nav-item {% if active_page == 'note_new' %}active{% endif %}" href="{{ url_for('note_new') }}"><b>记</b><span>{{ nav_labels.note_new }}</span></a>
+        <a class="nav-item {% if active_page == 'upload' %}active{% endif %}" href="{{ url_for('upload') }}"><b>↑</b><span>{{ nav_labels.upload }}</span></a>
+        <a class="nav-item {% if active_page == 'search' %}active{% endif %}" href="{{ url_for('search') }}"><b>寻</b><span>{{ nav_labels.search }}</span></a>
+        <a class="nav-item {% if active_page == 'discover' %}active{% endif %}" href="{{ url_for('discover_page') }}"><b>网</b><span>{{ nav_labels.discover }}</span></a>
+      </div>
+
+      <details class="nav-more" {% if active_page in ['datasets','experiments','simulations','settings','cultivation'] %}open{% endif %}>
+        <summary><span>更多工具</span><b>⌄</b></summary>
+        <div class="nav-group compact">
+          <a class="nav-item {% if active_page == 'datasets' %}active{% endif %}" href="{{ url_for('datasets_page') }}"><b>数</b><span>{{ nav_labels.datasets }}</span></a>
+          <a class="nav-item {% if active_page == 'experiments' %}active{% endif %}" href="{{ url_for('experiments_page') }}"><b>验</b><span>{{ nav_labels.experiments }}</span></a>
+          <a class="nav-item {% if active_page == 'simulations' %}active{% endif %}" href="{{ url_for('simulations_page') }}"><b>算</b><span>{{ nav_labels.simulations }}</span></a>
+          <a class="nav-item {% if active_page == 'cultivation' %}active{% endif %}" href="{{ url_for('cultivation_page') }}"><b>境</b><span>{{ nav_labels.cultivation }}</span></a>
+          <a class="nav-item {% if active_page == 'settings' %}active{% endif %}" href="{{ url_for('settings_page') }}"><b>设</b><span>{{ nav_labels.settings }}</span></a>
+        </div>
+      </details>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="{{ url_for('backup') }}">备份全部数据</a>
+      <small>本地保存 · 可整包迁移</small>
+    </div>
+  </aside>
+
+  <main class="main-shell">
+    <header class="topbar">
+      <button class="menu-button" id="menuButton" type="button" aria-label="打开菜单">☰</button>
+      <form class="global-search" action="{{ url_for('search') }}" method="get">
+        <span>⌕</span>
+        <input name="q" value="{{ request.query_params.get('q', '') }}" placeholder="搜论文、笔记、数据……">
+      </form>
+      <div class="top-actions">
+        <a class="soft-button" href="{{ url_for('assistant_page') }}">{{ nav_labels.assistant }}</a>
+        <a class="primary-button" href="{{ url_for('daily_page') }}">{{ nav_labels.daily }}</a>
+      </div>
+    </header>
+
+    <section class="page-wrap">
+      {% if flashes %}
+      <div class="flash-stack" aria-live="polite">
+        {% for item in flashes %}<div class="flash {{ item.category }}">{{ item.message }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', path='/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

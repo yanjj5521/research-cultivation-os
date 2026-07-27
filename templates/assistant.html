@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}AI 协作 · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head minimal-head">
+  <div><span class="eyebrow">网站负责上下文，大模型负责对话</span><h1>AI 协作</h1><p>复制提示词给你信任的模型，不在网站里重复搭一套复杂聊天系统。</p></div>
+  <a class="primary-button" href="https://chatgpt.com/" target="_blank" rel="noopener">打开 ChatGPT</a>
+</div>
+
+<nav class="prompt-tabs">
+  <a class="{% if mode=='today' %}active{% endif %}" href="{{ url_for('assistant_page') }}?mode=today">今日学习</a>
+  <a class="{% if mode=='plan' %}active{% endif %}" href="{{ url_for('assistant_page') }}?mode=plan">生成计划</a>
+  <a class="{% if mode=='paper' %}active{% endif %}" href="{{ url_for('assistant_page') }}?mode=paper">论文研读</a>
+  <a class="{% if mode=='debug' %}active{% endif %}" href="{{ url_for('assistant_page') }}?mode=debug">排错分析</a>
+</nav>
+
+<section class="panel prompt-panel">
+  <div class="panel-head simple"><div><span class="eyebrow">Prompt</span><h2>复制这段开始聊</h2></div><button class="soft-button" type="button" id="copyPromptButton">复制提示词</button></div>
+  <textarea id="promptText" rows="20" readonly>{{ prompt }}</textarea>
+  <div id="copyFeedback" class="copy-feedback" aria-live="polite"></div>
+</section>
+
+<div class="assistant-next-grid">
+  <a class="quick-card" href="{{ url_for('daily_page') }}"><span>✓</span><div><strong>回到每日任务</strong><small>只看今天三件事</small></div></a>
+  <a class="quick-card" href="{{ url_for('plans_page') }}"><span>日</span><div><strong>导入 AI 计划</strong><small>粘贴即可同步</small></div></a>
+  <a class="quick-card" href="{{ url_for('note_new') }}"><span>✎</span><div><strong>保存一句结论</strong><small>不用写长笔记</small></div></a>
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}数据炼丹房 · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Dataset Registry</span><h1>数据炼丹房</h1><p>保存机器学习数据集、实验表格与变量说明，原始文件和可检索元数据同时保留。</p></div>
+  <a class="primary-button" href="{{ url_for('upload') }}">↑ 上传数据集</a>
+</div>
+{% if entries %}
+<div class="dataset-grid">
+{% for entry in entries %}
+  <a class="dataset-card" href="{{ url_for('entry_view', entry_id=entry.id) }}">
+    <div class="dataset-symbol">Σ</div>
+    <div><span class="eyebrow">{{ entry.domain }}</span><h3>{{ entry.title }}</h3><p>{{ entry.summary or '尚未补充数据用途和变量说明。' }}</p></div>
+    <div class="dataset-metrics"><span><b>{{ entry.dataset_rows if entry.dataset_rows is not none else '—' }}</b>行</span><span><b>{{ entry.dataset_columns if entry.dataset_columns is not none else '—' }}</b>列</span><span><b>{{ entry.file_size|filesize }}</b>大小</span></div>
+    <div class="tag-row">{% for tag in entry.tags_list[:4] %}<span>#{{ tag }}</span>{% endfor %}</div>
+  </a>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-state panel"><div>📊</div><h3>还没有数据集档案</h3><p>先上传 CSV、XLSX 或 JSON。系统会自动读取表头、行列数和小样预览。</p><a class="primary-button" href="{{ url_for('upload') }}">建立第一个数据集</a></div>
+{% endif %}
+{% endblock %}

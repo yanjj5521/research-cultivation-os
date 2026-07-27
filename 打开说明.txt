@@ -1,0 +1,14 @@
+个人使用：
+1. 必须先完整解压。
+2. 进入 ResearchCultivationOS 文件夹。
+3. 双击 启动科研系统.cmd。
+4. 第一次启动需要联网安装 Python 依赖；之后可离线使用。
+
+作为联机中心主机：
+1. 局域网使用：双击 启动联机中心.cmd。
+2. 放在HTTPS Tunnel或反向代理后：双击 启动HTTPS联机中心.cmd。
+3. 首次启动后打开 instance/HUB_ADMIN_CREDENTIALS.txt。
+4. 登录后立即修改管理员密码。
+
+不要双击 app.py 或 hub_app.py，也不要在 ZIP 压缩包内部运行。
+环境异常时可双击 Reset_Local_Environment.cmd 重建本地 Python 环境，个人数据不会被删除。

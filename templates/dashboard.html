@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}主页 · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="home-hero official-home">
+  <div class="home-copy">
+    <span class="eyebrow">今天只留下一件真实成果</span>
+    <h1>{{ researcher_name }}，<br>开始今日修炼。</h1>
+    <p>网站负责近期计划、真实交付和延迟复盘；需要解释与制定方案时，继续交给 AI。</p>
+    <div class="hero-actions"><a class="primary-button large-button" href="{{ url_for('daily_page') }}">进入每日任务</a><a class="soft-button large-button" href="{{ url_for('assistant_page') }}">带去问 AI</a></div>
+  </div>
+  <a class="home-game-card world-preview" href="{{ url_for('world_page') }}">
+    <span class="game-kicker">我的洞府</span><strong>{{ realm.name }}</strong><p>◆ {{ nav_assets.spirit_stone }} 灵石 · 点此进入</p><div class="game-progress"><i style="width:{{ realm.progress }}%"></i></div><small>建筑、法宝、灵草和丹药都由真实交付驱动</small>
+  </a>
+</section>
+
+{% if active_plan %}
+<section class="today-preview panel">
+  <div class="panel-head simple"><div><span class="eyebrow">Day {{ active_plan.current_day }} / {{ active_plan.total_days }}</span><h2>今天的关卡</h2></div><span class="round-progress">{{ today_progress }}%</span></div>
+  <div class="mini-missions">{% for mission in today_missions[:4] %}<a href="{{ url_for('daily_page') }}" class="mini-mission {% if mission.completed %}done{% endif %}"><span>{{ '✓' if mission.completed else loop.index }}</span><div><strong>{{ mission.title }}</strong><small>{{ '已交付' if mission.completed else mission.deliverable or '需要成果证明' }}</small></div></a>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="quick-grid official-quick-grid">
+  <a class="quick-card accent" href="{{ url_for('note_new') }}"><span>✎</span><div><strong>写笔记</strong><small>可直接粘贴图片</small></div></a>
+  <a class="quick-card" href="{{ url_for('review_page') }}"><span>忆</span><div><strong>复盘挑战</strong><small>答案先隐藏</small></div></a>
+  <a class="quick-card" href="{{ url_for('alchemy_page') }}"><span>丹</span><div><strong>炼丹炉</strong><small>特殊任务换灵草</small></div></a>
+  <a class="quick-card" href="{{ url_for('world_page') }}"><span>府</span><div><strong>进入洞府</strong><small>仙草、建筑与法宝</small></div></a>
+  <a class="quick-card" href="{{ url_for('upload') }}"><span>↑</span><div><strong>收录资料</strong><small>论文、数据与代码</small></div></a>
+  <a class="quick-card" href="{{ url_for('profile_page') }}"><span>我</span><div><strong>个人主页</strong><small>展示会什么、能做到什么</small></div></a>
+</section>
+
+<section class="home-lower-grid">
+  <div class="panel compact-panel"><div class="panel-head simple"><div><span class="eyebrow">最近保存</span><h2>科研痕迹</h2></div><a href="{{ url_for('library') }}">全部</a></div>{% if recent %}<div class="asset-list compact-list">{% for entry in recent[:5] %}<a class="asset-row" href="{{ url_for('entry_view', entry_id=entry.id) }}"><span class="asset-icon">{{ entry.kind_icon }}</span><span class="asset-main"><strong>{{ entry.title }}</strong><small>{{ entry.domain }} · {{ entry.updated_at|datecn }}</small></span><span class="arrow">›</span></a>{% endfor %}</div>{% else %}<div class="empty-compact">完成第一项交付后，科研痕迹会在这里出现。</div>{% endif %}</div>
+  <details class="panel compact-panel daily-chest"><summary><span class="chest-icon">🥚</span><h2>隐藏线索</h2></summary><p>洞府里有一处看似普通的地方可以点击。第一批灵石也许就藏在那里。</p><a class="soft-button" href="{{ url_for('world_page') }}">去找找看</a></details>
+</section>
+
+{% if pending_review %}
+<div class="review-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+  <section class="review-modal">
+    <span class="review-modal-mark">忆</span>
+    <small>每天只弹一次</small>
+    <h2 id="review-modal-title">{{ pending_review.source_date }} 的交付，到了提取时间</h2>
+    <p>系统找到 {{ pending_review.source_count }} 份复盘关键文本。问题只根据这些交付生成，参考证据会在回答后显示。</p>
+    <div class="review-modal-actions">
+      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始3分钟复盘</button></form>
+      <form method="post" action="{{ url_for('review_snooze') }}"><button class="text-button">今天先不弹</button></form>
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

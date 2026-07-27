@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}修炼体系 · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">Cultivation System</span><h1>科研修炼体系</h1><p>境界不只看上传数量，更看资料是否被标注、分析，并转化为实验、数据与可复现案例。</p></div></div>
+<section class="panel cultivation-hero"><div><span class="eyebrow">Current Realm</span><h2>{{realm.name}}</h2><p>{{realm.description}}</p><div class="realm-progress"><span style="width:{{realm.progress}}%"></span></div><small>{{xp}} XP · 距 {{realm.next_name}} 还差 {{realm.remaining}} XP</small></div><div class="quality-ring"><strong>{{quality}}%</strong><span>知识库完整度</span></div><div class="cultivation-stat"><strong>{{streak}}</strong><span>连续修炼天数</span></div></section>
+<div class="stats-grid cultivation-stats"><div class="stat-card"><span>藏</span><strong>{{totals.total}}</strong><small>知识资产</small></div><div class="stat-card"><span>析</span><strong>{{totals.analyzed}}</strong><small>已生成研读卡</small></div><div class="stat-card"><span>验</span><strong>{{exp_total}}</strong><small>实验批次</small></div><div class="stat-card"><span>算</span><strong>{{sim_total}}</strong><small>模拟案例</small></div></div>
+<div class="content-grid equal">
+<section class="panel"><div class="panel-head"><div><span class="eyebrow">XP Ledger</span><h2>修为来源</h2></div></div><div class="xp-ledger">{% for row in activity_rows %}<div><span>{{row.action}}</span><b>{{row.n}} 次</b><strong>{{row.xp}} XP</strong></div>{% endfor %}</div></section>
+<section class="panel"><div class="panel-head"><div><span class="eyebrow">Achievements</span><h2>科研成就</h2></div></div><div class="achievement-grid">{% for item in achievements %}<div class="achievement {% if item.unlocked %}unlocked{% endif %}"><span>{{item.icon}}</span><div><strong>{{item.name}}</strong><small>{{item.desc}}</small></div></div>{% endfor %}</div></section>
+</div>
+<section class="panel" id="quests"><div class="panel-head"><div><span class="eyebrow">Quests</span><h2>修炼任务</h2></div></div><div class="quest-list">{% for q in quests %}<div class="quest-row {% if q.completed %}done{% endif %}"><form method="post" action="{{url_for('quest_toggle',quest_id=q.id)}}"><button>{{'✓' if q.completed else '○'}}</button></form><div><strong>{{q.title}}</strong><small>{{q.description}}</small></div><b>+{{q.xp}} XP</b></div>{% endfor %}</div></section>
+{% endblock %}
