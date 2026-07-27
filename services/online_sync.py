@@ -3,39 +3,66 @@ from __future__ import annotations
 import json
 import uuid
 import urllib.error
-import urllib.request
 from typing import Any
 
 from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
 from services.economy import balances as local_balances
 from services.game_world import ARTIFACTS, BUILDINGS
 from services.progression import normalize_realm_labels
+from services.sync_backend import (
+    SYNC_EVENT_SCHEMA_VERSION,
+    build_sync_backend,
+)
 
 
-def queue_event(conn, event_type: str, payload: dict[str, Any] | None = None, event_uuid: str | None = None) -> str:
+def _provider_from_conn(conn) -> str:
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key='sync_provider'"
+    ).fetchone()
+    return str(row["value"]).strip() if row else "disabled"
+
+
+def queue_event(
+    conn,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+    event_uuid: str | None = None,
+    *,
+    aggregate_type: str = "",
+    aggregate_id: str = "",
+    sequence_no: int = 0,
+) -> str:
     event_uuid = event_uuid or uuid.uuid4().hex
+    if _provider_from_conn(conn) == "disabled":
+        return event_uuid
     conn.execute(
-        """INSERT OR IGNORE INTO online_sync_queue(event_uuid,event_type,payload_json,status,created_at)
-           VALUES (?,?,?,'pending',?)""",
-        (event_uuid, event_type, json.dumps(payload or {}, ensure_ascii=False), now_iso()),
+        """
+        INSERT OR IGNORE INTO online_sync_queue(
+            event_uuid,event_type,payload_json,status,created_at,schema_version,
+            aggregate_type,aggregate_id,sequence_no
+        ) VALUES (?,?,?,'pending',?,?,?,?,?)
+        """,
+        (
+            event_uuid,
+            event_type,
+            json.dumps(payload or {}, ensure_ascii=False),
+            now_iso(),
+            SYNC_EVENT_SCHEMA_VERSION,
+            aggregate_type[:60],
+            aggregate_id[:120],
+            max(0, int(sequence_no or 0)),
+        ),
     )
     return event_uuid
 
 
 def online_configured() -> bool:
-    return bool(get_setting("hub_url", "").strip() and get_setting("hub_api_token", "").strip())
-
-
-def _request_json(method: str, url: str, token: str, body: dict[str, Any] | None = None, timeout: float = 5.0) -> dict[str, Any]:
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.4"},
+    backend = build_sync_backend(
+        get_setting("sync_provider", "disabled"),
+        get_setting("hub_url", ""),
+        get_setting("hub_api_token", ""),
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return bool(backend.capabilities.enabled and backend.capabilities.ready)
 
 
 def _cache(conn, key: str, value: Any) -> None:
@@ -139,11 +166,29 @@ def apply_state(conn, state: dict[str, Any]) -> None:
 def sync_now(timeout: float = 5.0) -> dict[str, Any]:
     hub_url = get_setting("hub_url", "").strip().rstrip("/")
     token = get_setting("hub_api_token", "").strip()
-    if not hub_url or not token:
-        return {"ok": False, "message": "尚未配置联机中心。", "synced": 0}
+    provider = get_setting("sync_provider", "disabled")
+    backend = build_sync_backend(provider, hub_url, token)
+    if not backend.capabilities.enabled:
+        return {
+            "ok": False,
+            "message": backend.capabilities.detail,
+            "synced": 0,
+            "provider": provider,
+        }
+    if not backend.capabilities.ready:
+        return {
+            "ok": False,
+            "message": backend.capabilities.detail,
+            "synced": 0,
+            "provider": provider,
+        }
     with connect() as conn:
         pending = [dict(row) for row in conn.execute(
-            "SELECT * FROM online_sync_queue WHERE status!='synced' ORDER BY id LIMIT 100"
+            """
+            SELECT * FROM online_sync_queue
+            WHERE status!='synced' AND dead_letter=0
+            ORDER BY id LIMIT 100
+            """
         )]
     events = []
     for row in pending:
@@ -151,14 +196,25 @@ def sync_now(timeout: float = 5.0) -> dict[str, Any]:
             payload = json.loads(row["payload_json"] or "{}")
         except json.JSONDecodeError:
             payload = {}
-        events.append({"event_uuid": row["event_uuid"], "event_type": row["event_type"], "payload": payload})
+        events.append(
+            {
+                "event_uuid": row["event_uuid"],
+                "event_type": row["event_type"],
+                "payload": payload,
+                "schema_version": int(row.get("schema_version", 1) or 1),
+                "aggregate_type": str(row.get("aggregate_type", "")),
+                "aggregate_id": str(row.get("aggregate_id", "")),
+                "sequence_no": int(row.get("sequence_no", 0) or 0),
+                "occurred_at": row["created_at"],
+            }
+        )
     try:
         if events:
-            response = _request_json("POST", f"{hub_url}/api/v1/events", token, {"events": events}, timeout=timeout)
+            response = backend.push(events, timeout=timeout)
             results = response.get("results", [])
             state = response.get("state", {})
         else:
-            state = _request_json("GET", f"{hub_url}/api/v1/bootstrap", token, timeout=timeout)
+            state = backend.bootstrap(timeout=timeout)
             results = []
         accepted = {r.get("event_uuid") for r in results if r.get("status") in {"applied", "duplicate"}}
         with connect() as conn:
@@ -170,7 +226,14 @@ def sync_now(timeout: float = 5.0) -> dict[str, Any]:
             apply_state(conn, state)
             _cache(conn, "last_sync", {"at": now_iso(), "results": results})
             conn.commit()
-        return {"ok": True, "message": "联机状态已同步。", "synced": len(accepted), "state": state, "results": results}
+        return {
+            "ok": True,
+            "message": "联机状态已同步。",
+            "synced": len(accepted),
+            "state": state,
+            "results": results,
+            "provider": provider,
+        }
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")[:300]
         message = f"中心返回 HTTP {exc.code}: {detail}"
@@ -185,7 +248,7 @@ def sync_now(timeout: float = 5.0) -> dict[str, Any]:
 
 
 def best_effort_sync() -> None:
-    if get_setting("hub_auto_sync", "1") != "1" or not online_configured():
+    if get_setting("hub_auto_sync", "0") != "1" or not online_configured():
         return
     try:
         sync_now(timeout=2.5)

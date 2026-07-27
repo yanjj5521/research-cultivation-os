@@ -9,10 +9,20 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
-from services.online_sync import best_effort_sync, cached_value, queue_event, sync_now
+from services.online_sync import (
+    best_effort_sync,
+    cached_value,
+    queue_event,
+    sync_now,
+)
 from services.economy import balances as local_balances
 from services.profile_media import export_avatar_payload, import_avatar_payload
 from services.progression import normalize_realm_labels
+from services.sync_backend import (
+    SYNC_CONTRACT_VERSION,
+    all_backend_capabilities,
+    build_sync_backend,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EXPORT_DIR = BASE_DIR / "storage" / "sync_exports"
@@ -49,6 +59,12 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
 
     @router.get("/online", response_class=HTMLResponse, name="online_page")
     def online_page(request: Request):
+        provider = get_setting("sync_provider", "disabled")
+        backend = build_sync_backend(
+            provider,
+            get_setting("hub_url", ""),
+            get_setting("hub_api_token", ""),
+        )
         with connect() as conn:
             queue_stats = dict(conn.execute(
                 """SELECT COUNT(*) total,
@@ -63,9 +79,13 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             context=context(
                 request,
                 "online",
+                sync_provider=provider,
+                sync_capabilities=backend.capabilities.as_dict(),
+                backend_options=all_backend_capabilities(),
+                contract_version=SYNC_CONTRACT_VERSION,
                 hub_url=get_setting("hub_url", ""),
                 hub_token=get_setting("hub_api_token", ""),
-                auto_sync=get_setting("hub_auto_sync", "1") == "1",
+                auto_sync=get_setting("hub_auto_sync", "0") == "1",
                 theme=_theme(),
                 queue_stats=queue_stats,
                 recent=recent,
@@ -73,29 +93,65 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 last_error=cached_value("last_sync_error", {}),
                 hub_state=cached_value("hub_state", {}),
                 latest_release=cached_value("latest_release", None),
-                local_version=get_setting("portable_version", "1.4.0"),
+                local_version=get_setting("portable_version", "1.5.0"),
             ),
         )
+
+    @router.get("/api/sync/capabilities", name="sync_capabilities")
+    def sync_capabilities():
+        provider = get_setting("sync_provider", "disabled")
+        backend = build_sync_backend(
+            provider,
+            get_setting("hub_url", ""),
+            get_setting("hub_api_token", ""),
+        )
+        return {
+            "application": "Research Cultivation OS",
+            "local_version": get_setting("portable_version", "1.5.0"),
+            "active_backend": backend.capabilities.as_dict(),
+            "available_backends": all_backend_capabilities(),
+            "data_policy": {
+                "research_files": "local_only",
+                "queued_while_disabled": False,
+                "cloud_v2_implemented": False,
+            },
+        }
 
     @router.post("/online/settings", name="online_settings_save")
     def online_settings_save(
         request: Request,
+        sync_provider: str = Form("disabled"),
         hub_url: str = Form(""),
         hub_api_token: str = Form(""),
         auto_sync: str = Form(""),
     ):
+        if sync_provider not in {"disabled", "legacy_hub"}:
+            flash(request, "规模化云端仍是预留接口，当前不能启用。", "error")
+            return RedirectResponse(request.url_for("online_page"), status_code=303)
         url = hub_url.strip().rstrip("/")
         if url and not (url.startswith("http://") or url.startswith("https://")):
             flash(request, "中心地址必须以 http:// 或 https:// 开头。", "error")
             return RedirectResponse(request.url_for("online_page"), status_code=303)
+        set_setting("sync_provider", sync_provider)
         set_setting("hub_url", url)
         set_setting("hub_api_token", hub_api_token.strip())
-        set_setting("hub_auto_sync", "1" if auto_sync == "1" else "0")
-        flash(request, "联机设置已保存。")
+        set_setting(
+            "hub_auto_sync",
+            "1" if sync_provider == "legacy_hub" and auto_sync == "1" else "0",
+        )
+        flash(
+            request,
+            "联机扩展保持关闭，本机不会上传数据。"
+            if sync_provider == "disabled"
+            else "轻量同行会兼容设置已保存。",
+        )
         return RedirectResponse(request.url_for("online_page"), status_code=303)
 
     @router.post("/online/connect", name="online_connect")
     def online_connect(request: Request):
+        if get_setting("sync_provider", "disabled") != "legacy_hub":
+            flash(request, "当前未启用联机后端。", "error")
+            return RedirectResponse(request.url_for("online_page"), status_code=303)
         with connect() as conn:
             profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
             claim_uuid = get_setting("hub_initial_claim_uuid", "").strip()
@@ -167,8 +223,8 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 )
             ]
         payload = {
-            "format": "research-cultivation-personalization-v4",
-            "schema_version": 4,
+            "format": "research-cultivation-personalization-v5",
+            "schema_version": 5,
             "exported_at": now_iso(),
             "theme": _theme(),
             "profile": {k: profile[k] for k in ("display_name", "title", "bio", "skills", "capabilities", "goals", "avatar_symbol")},
@@ -188,6 +244,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 "research-cultivation-personalization-v2",
                 "research-cultivation-personalization-v3",
                 "research-cultivation-personalization-v4",
+                "research-cultivation-personalization-v5",
             }:
                 raise ValueError("不是受支持的个性化包")
             theme = data.get("theme", {})

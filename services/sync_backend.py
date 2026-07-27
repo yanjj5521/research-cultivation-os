@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+import json
+import urllib.request
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+
+SYNC_CONTRACT_VERSION = "2026-07-27"
+SYNC_EVENT_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class BackendCapabilities:
+    provider: str
+    label: str
+    enabled: bool
+    ready: bool
+    production_scale: bool
+    contract_version: str = SYNC_CONTRACT_VERSION
+    max_batch_size: int = 100
+    supports_cursor: bool = False
+    supports_tenants: bool = False
+    detail: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "label": self.label,
+            "enabled": self.enabled,
+            "ready": self.ready,
+            "production_scale": self.production_scale,
+            "contract_version": self.contract_version,
+            "event_schema_version": SYNC_EVENT_SCHEMA_VERSION,
+            "max_batch_size": self.max_batch_size,
+            "supports_cursor": self.supports_cursor,
+            "supports_tenants": self.supports_tenants,
+            "detail": self.detail,
+        }
+
+
+class SyncBackend(Protocol):
+    capabilities: BackendCapabilities
+
+    def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
+        ...
+
+    def push(
+        self,
+        events: list[dict[str, Any]],
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        ...
+
+
+class DisabledBackend:
+    capabilities = BackendCapabilities(
+        provider="disabled",
+        label="未启用",
+        enabled=False,
+        ready=False,
+        production_scale=False,
+        detail="仅保留版本化扩展接口，本机不会排队、上传或拉取任何状态。",
+    )
+
+    def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
+
+    def push(
+        self,
+        events: list[dict[str, Any]],
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
+
+
+class ReservedCloudBackend:
+    capabilities = BackendCapabilities(
+        provider="cloud_v2",
+        label="规模化云端 v2（预留）",
+        enabled=False,
+        ready=False,
+        production_scale=True,
+        supports_cursor=True,
+        supports_tenants=True,
+        detail="协议与适配器插槽已经固定，但服务器、登录和数据库尚未实现。",
+    )
+
+    def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
+
+    def push(
+        self,
+        events: list[dict[str, Any]],
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
+
+
+class LegacyHubBackend:
+    def __init__(self, base_url: str, token: str):
+        self.base_url = base_url.strip().rstrip("/")
+        self.token = token.strip()
+        ready = bool(self.base_url and self.token)
+        self.capabilities = BackendCapabilities(
+            provider="legacy_hub",
+            label="轻量同行会（兼容）",
+            enabled=True,
+            ready=ready,
+            production_scale=False,
+            detail=(
+                "适用于小范围自托管；它是兼容适配器，不作为成百上千用户的生产后端。"
+                if ready
+                else "需要填写轻量同行会地址与 Token。"
+            ),
+        )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        if not self.capabilities.ready:
+            raise RuntimeError(self.capabilities.detail)
+        data = (
+            json.dumps(body, ensure_ascii=False).encode("utf-8")
+            if body is not None
+            else None
+        )
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=data,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "User-Agent": "ResearchCultivationOS/1.5",
+                "X-Sync-Contract": SYNC_CONTRACT_VERSION,
+            },
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
+        return self._request("GET", "/api/v1/bootstrap", timeout=timeout)
+
+    def push(
+        self,
+        events: list[dict[str, Any]],
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/api/v1/events",
+            {"events": events},
+            timeout=timeout,
+        )
+
+
+def build_sync_backend(
+    provider: str,
+    hub_url: str = "",
+    token: str = "",
+) -> SyncBackend:
+    provider = (provider or "disabled").strip()
+    if provider == "legacy_hub":
+        return LegacyHubBackend(hub_url, token)
+    if provider == "cloud_v2":
+        return ReservedCloudBackend()
+    return DisabledBackend()
+
+
+def all_backend_capabilities() -> list[dict[str, Any]]:
+    return [
+        DisabledBackend.capabilities.as_dict(),
+        LegacyHubBackend("", "").capabilities.as_dict(),
+        ReservedCloudBackend.capabilities.as_dict(),
+    ]

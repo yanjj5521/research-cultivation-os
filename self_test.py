@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-from db import connect, get_setting, now_iso, set_setting
+from db import connect, get_setting, now_iso, set_setting, total_xp
+from services.progression import (
+    REALM_STAGES,
+    TRIBULATION_GATES,
+    realm_state,
+)
 
 
 def _check_response(failures: list[str], label: str, response, expected: int = 200) -> None:
@@ -19,7 +24,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v1.4 loop.
+    """Exercise the complete v1.5 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -222,10 +227,19 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
 
     dashboard = client.get("/")
     _check_response(failures, "pending review dashboard", dashboard)
-    if "昨日复盘" not in dashboard.text:
+    if "到了提取时间" not in dashboard.text:
         failures.append("dashboard did not surface the pending review")
     if dashboard.text.count("gate-shortcut") < 4 or "home-portal-grid" in dashboard.text:
-        failures.append("dashboard did not use the compact v1.4 gate shortcuts")
+        failures.append("dashboard did not retain the compact mountain-gate shortcuts")
+
+    review_landing = client.get("/review")
+    _check_response(failures, "review landing separation", review_landing)
+    if 'value="beast"' in review_landing.text or 'value="tribulation"' in review_landing.text:
+        failures.append("review page still contained independent challenge launch forms")
+    trials_landing = client.get("/trials")
+    _check_response(failures, "trials landing", trials_landing)
+    if "万象秘境" not in trials_landing.text or "五问雷劫" not in trials_landing.text:
+        failures.append("independent trials page did not expose both trial types")
 
     _check_response(
         failures,
@@ -273,6 +287,66 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         failures.append("review session did not complete")
     if not rating or rating["self_rating"] != "partial" or not rating["next_due"]:
         failures.append("review self rating was not scheduled")
+
+    first_gate = TRIBULATION_GATES[0]
+    target_xp = next(
+        stage.threshold for stage in REALM_STAGES if stage.key == first_gate.to_key
+    )
+    with connect() as conn:
+        missing_xp = max(0, target_xp - total_xp(conn))
+        if missing_xp:
+            conn.execute(
+                "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
+                ("selftest_realm_setup", missing_xp, "只用于一次性迁移与雷劫自检", now_iso()),
+            )
+        conn.execute(
+            """
+            INSERT INTO inventory_items(
+                item_key,item_type,quantity,level,equipped,acquired_at,updated_at
+            ) VALUES ('tribulation_pill','pill',1,1,0,?,?)
+            ON CONFLICT(item_key) DO UPDATE SET
+                item_type='pill',quantity=quantity+1,updated_at=excluded.updated_at
+            """,
+            (now_iso(), now_iso()),
+        )
+        conn.commit()
+    locked_realm = app.current_realm(target_xp)
+    if not locked_realm["tribulation_required"]:
+        failures.append("reaching a major threshold did not activate the tribulation gate")
+    _check_response(
+        failures,
+        "tribulation start at breakthrough",
+        client.post("/review/start", data={"mode": "tribulation"}),
+    )
+    with connect() as conn:
+        tribulation_session = conn.execute(
+            "SELECT * FROM review_sessions WHERE mode='tribulation' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if not tribulation_session:
+        failures.append("eligible tribulation did not create a session")
+    else:
+        tribulation_questions = json.loads(tribulation_session["questions_json"])
+        for index, question in enumerate(tribulation_questions):
+            _check_response(
+                failures,
+                f"tribulation answer {index}",
+                client.post(
+                    f"/review/sessions/{tribulation_session['id']}/answer",
+                    data={
+                        "question_index": str(index),
+                        "answer": str(question.get("evidence", "")),
+                    },
+                ),
+            )
+        with connect() as conn:
+            attempt = conn.execute(
+                "SELECT * FROM realm_tribulations WHERE session_id=?",
+                (tribulation_session["id"],),
+            ).fetchone()
+        if not attempt or attempt["status"] != "passed":
+            failures.append("high-evidence tribulation answers did not unlock the gate")
+        elif app.current_realm(total_xp())["key"] != first_gate.to_key:
+            failures.append("passed tribulation did not advance the visible realm")
 
     _check_response(
         failures,
@@ -387,9 +461,9 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v4":
-        failures.append("personalization export did not use the v4 format")
-    if len(package.get("theme", {}).get("realm_names", {})) != 31:
+    if package.get("format") != "research-cultivation-personalization-v5":
+        failures.append("personalization export did not use the v5 format")
+    if len(package.get("theme", {}).get("realm_names", {})) != 39:
         failures.append("personalization export did not include the full realm map")
     if not package.get("workspaces"):
         failures.append("personalization export did not include workspace definitions")
@@ -443,7 +517,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     )
     imported_legacy_realms = json.loads(get_setting("realm_names", "{}"))
     imported_legacy_nav = json.loads(get_setting("nav_labels", "{}"))
-    if len(imported_legacy_realms) != 31 or imported_legacy_realms.get("mortal") != "旧包凡人":
+    if len(imported_legacy_realms) != 39 or imported_legacy_realms.get("mortal") != "旧包凡人":
         failures.append("legacy realm labels were not expanded without losing custom names")
     if imported_legacy_nav.get("dashboard") != "旧包首页" or "group_workspaces" not in imported_legacy_nav:
         failures.append("legacy navigation labels were not merged with new customizable items")
@@ -454,7 +528,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "/online/personalization/import",
             files={
                 "file": (
-                    "personalization-v4.json",
+                    "personalization-v5.json",
                     json.dumps(package, ensure_ascii=False).encode("utf-8"),
                     "application/json",
                 )
@@ -479,13 +553,36 @@ def main() -> None:
     integration = "--integration" in sys.argv
     client = TestClient(app.app)
     pages = [
-        "/", "/cultivation", "/daily", "/review", "/retreat", "/alchemy", "/world", "/profile", "/plans",
+        "/", "/cultivation", "/daily", "/review", "/trials", "/retreat", "/alchemy", "/world", "/profile", "/plans",
         "/foundation", "/assistant", "/notes/new", "/library", "/workspaces", "/settings", "/online",
     ]
     failures = []
     for page in pages:
         response = client.get(page)
         _check_response(failures, page, response)
+    daily_navigation = client.get("/daily")
+    navigation_groups = [
+        "今日修炼",
+        "知识与交付",
+        "我的工作区",
+        "秘境与成长",
+        "协作与系统",
+    ]
+    group_positions = [daily_navigation.text.find(label) for label in navigation_groups]
+    if any(position < 0 for position in group_positions):
+        failures.append("expanded navigation did not show every expected category")
+    elif group_positions != sorted(group_positions):
+        failures.append("navigation categories were not ordered by expected frequency")
+    if "nav-more" in daily_navigation.text:
+        failures.append("desktop navigation still rendered a collapsed tools section")
+    capabilities = client.get("/api/sync/capabilities")
+    _check_response(failures, "sync capability interface", capabilities)
+    if capabilities.status_code == 200:
+        capability_data = capabilities.json()
+        if capability_data.get("active_backend", {}).get("enabled"):
+            failures.append("scale-ready sync interface was not disabled by default")
+        if capability_data.get("data_policy", {}).get("cloud_v2_implemented"):
+            failures.append("reserved cloud backend incorrectly reported as implemented")
     knowledge_export = client.get("/knowledge/export")
     _check_response(failures, "knowledge export", knowledge_export)
     try:
@@ -500,7 +597,7 @@ def main() -> None:
             "mission_deliveries", "mission_delivery_files", "asset_transactions", "inventory_items",
             "player_profile", "easter_eggs", "track_growth", "online_sync_queue", "online_sync_cache",
             "review_sources", "review_sessions", "review_session_sources", "review_answers",
-            "review_snoozes", "special_tasks", "herb_inventory",
+            "review_snoozes", "realm_tribulations", "special_tasks", "herb_inventory",
             "workspaces",
         }
         found = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -511,6 +608,24 @@ def main() -> None:
             failures.append("no study plan")
         if conn.execute("SELECT COUNT(*) n FROM daily_missions").fetchone()["n"] < 1:
             failures.append("no daily missions")
+    if len(REALM_STAGES) != 39:
+        failures.append(f"realm system expected 39 stages, got {len(REALM_STAGES)}")
+    requirements = [stage.required_xp for stage in REALM_STAGES[1:]]
+    if len(requirements) != len(set(requirements)):
+        failures.append("realm XP requirements were not unique per stage")
+    if not TRIBULATION_GATES:
+        failures.append("no major breakthrough gates were defined")
+    else:
+        first_gate = TRIBULATION_GATES[0]
+        target_xp = next(
+            stage.threshold for stage in REALM_STAGES if stage.key == first_gate.to_key
+        )
+        locked = realm_state(target_xp, passed_gate_keys=())
+        unlocked = realm_state(target_xp, passed_gate_keys={first_gate.key})
+        if not locked["tribulation_required"] or locked["key"] != first_gate.from_key:
+            failures.append("Golden-Core-plus breakthrough was not locked before tribulation")
+        if unlocked["key"] != first_gate.to_key:
+            failures.append("passed tribulation did not unlock the target realm")
     if integration:
         _run_integration(client, failures)
     if failures:
@@ -522,7 +637,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v1.4 task layers, workspaces, knowledge export and local database are ready.")
+        print("Core pages, v1.5 navigation, trials, workspaces, knowledge export and local database are ready.")
 
 
 if __name__ == "__main__":

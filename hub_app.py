@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from db import normalize_nav_labels
 from hub_db import (
     HUB_ADMIN_PATH,
     HUB_BACKUP_DIR,
@@ -40,11 +41,12 @@ from hub_db import (
     verify_password,
 )
 from services.game_world import ARTIFACTS, BUILDINGS
+from services.progression import normalize_realm_labels
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
-VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "1.4.0"
+VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "1.5.0"
 
 app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"
@@ -212,28 +214,9 @@ def parse_theme(value: str | dict[str, Any]) -> dict[str, Any]:
         "site_name": str(data.get("site_name", "问道科研"))[:60],
         "review_popup": "1" if str(data.get("review_popup", "1")) == "1" else "0",
     }
-    realm_names = data.get("realm_names", [])
-    result["realm_names"] = (
-        [str(item).strip()[:30] for item in realm_names[:14] if str(item).strip()]
-        if isinstance(realm_names, list)
-        else []
-    )
-    nav_keys = {
-        "dashboard", "daily", "review", "plans", "retreat", "alchemy", "world", "profile",
-        "assistant", "online", "library", "folders", "note_new", "upload",
-        "search", "discover", "datasets", "experiments", "simulations",
-        "cultivation", "settings",
-    }
+    result["realm_names"] = normalize_realm_labels(data.get("realm_names", {}))
     nav_labels = data.get("nav_labels", {})
-    result["nav_labels"] = (
-        {
-            str(key): str(label).strip()[:24]
-            for key, label in nav_labels.items()
-            if key in nav_keys and str(label).strip()
-        }
-        if isinstance(nav_labels, dict)
-        else {}
-    )
+    result["nav_labels"] = normalize_nav_labels(nav_labels)
     for key, values in allowed.items():
         if result[key] not in values:
             result[key] = next(iter(values))
