@@ -19,6 +19,14 @@ HUB_ADMIN_PATH = BASE_DIR / "instance" / "HUB_ADMIN_CREDENTIALS.txt"
 ASSET_KEYS = ("spirit_stone", "spirit_wood", "mystic_iron", "star_sand")
 
 
+def _restrict_private_file(path: Path) -> None:
+    """Use owner-only POSIX permissions where the host filesystem supports them."""
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
 def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -74,6 +82,7 @@ def hub_secret() -> str:
         return HUB_SECRET_PATH.read_text(encoding="utf-8").strip()
     value = secrets.token_urlsafe(48)
     HUB_SECRET_PATH.write_text(value, encoding="utf-8")
+    _restrict_private_file(HUB_SECRET_PATH)
     return value
 
 
@@ -278,24 +287,26 @@ def init_hub_db() -> None:
         )
         defaults = {
             "site_name": "问道科研 · 同行会",
-            "version": "2.0.1",
+            "version": "2.0.2",
             "registration_mode": "invite",
             "max_members": "10",
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO hub_settings(key,value) VALUES (?,?)", (key, value))
-        conn.execute("UPDATE hub_settings SET value='2.0.1' WHERE key='version'")
+        conn.execute("UPDATE hub_settings SET value='2.0.2' WHERE key='version'")
         admin = conn.execute("SELECT id FROM hub_users WHERE role='admin' LIMIT 1").fetchone()
         if not admin:
             password = secrets.token_urlsafe(10)
             user_id, token = create_user(conn, "admin", password, "洞府主人", role="admin")
             HUB_ADMIN_PATH.write_text(
-                "问道科研 v2.0 轻量联机中心管理员凭据\n"
+                "问道科研 v2.0.2 轻量联机中心管理员凭据\n"
                 "================================\n"
                 f"用户名: admin\n密码: {password}\nAPI Token: {token}\n\n"
-                "首次登录后请立即修改密码，并妥善保管此文件。\n",
+                "首次登录后请立即修改密码。修改成功后系统会销毁这份一次性凭据文件；\n"
+                "API Token 仍可在“我的联机主页”查看或重新生成。\n",
                 encoding="utf-8",
             )
+            _restrict_private_file(HUB_ADMIN_PATH)
             invite = secrets.token_urlsafe(8)
             conn.execute(
                 "INSERT INTO hub_invites(code,uses_remaining,expires_at,created_by,created_at) VALUES (?,?,?,?,?)",

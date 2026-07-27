@@ -25,8 +25,8 @@ def main() -> None:
             failures.append("missing tables: " + ", ".join(missing))
         if conn.execute("SELECT COUNT(*) n FROM hub_users WHERE role='admin'").fetchone()["n"] != 1:
             failures.append("admin account not initialized")
-        if get_hub_setting(conn, "version") != "2.0.1":
-            failures.append("hub version was not migrated to 2.0.1")
+        if get_hub_setting(conn, "version") != "2.0.2":
+            failures.append("hub version was not migrated to 2.0.2")
     if failures:
         print("HUB SELF TEST FAILED")
         for item in failures:

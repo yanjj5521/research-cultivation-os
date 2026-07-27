@@ -13,8 +13,23 @@ WORKSPACE_MODULES = {
     "experiments": ("实验台账", "使用结构化实验批次表"),
     "simulations": ("模拟案例", "归档输入、日志、轨迹和复现命令"),
     "datasets": ("数据集", "保存表格、字段、单位和数据说明"),
+    "ml": ("ML 建模", "归档数据、特征、代码、模型卡和验证结论"),
+    "md": ("MD 模拟", "管理结构、力场、输入、日志、轨迹和分析"),
+    "comsol": ("COMSOL 多物理场", "管理几何、材料、网格、求解器和验证"),
 }
 WORKSPACE_ACCENTS = {"clay", "sage", "ink", "amber"}
+WORKSPACE_GUIDES = {
+    "ml": {
+        "kicker": "Machine Learning",
+        "stages": ("数据边界", "特征工程", "训练评估", "实验验证"),
+        "note": "公共数据只提供先验与边界；最终判断由自己的新实验验证，MD 数据与实验性能表分开建模。",
+    },
+    "comsol": {
+        "kicker": "COMSOL Multiphysics",
+        "stages": ("物理问题", "几何材料", "网格求解", "实验校核"),
+        "note": "每个模型同时保留假设、边界条件、网格无关性、求解器设置和实验校核证据。",
+    },
+}
 
 
 def _workspace_counts(conn, workspace_id: int, module: str) -> int:
@@ -22,7 +37,7 @@ def _workspace_counts(conn, workspace_id: int, module: str) -> int:
         return int(conn.execute(
             "SELECT COUNT(*) n FROM experiments WHERE workspace_id=?", (workspace_id,)
         ).fetchone()["n"])
-    if module == "simulations":
+    if module in {"simulations", "md"}:
         return int(conn.execute(
             "SELECT COUNT(*) n FROM simulations WHERE workspace_id=?", (workspace_id,)
         ).fetchone()["n"])
@@ -147,7 +162,7 @@ def register_workspace_routes(
                 raise HTTPException(status_code=404)
             workspace = dict(row)
             module = str(row["module"])
-            if module == "knowledge":
+            if module not in {"experiments", "simulations", "datasets", "md"}:
                 entries = [
                     entry_dict(item)
                     for item in conn.execute(
@@ -161,7 +176,7 @@ def register_workspace_routes(
             return RedirectResponse(
                 f"{request.url_for('experiments_page')}?workspace={workspace_id}", status_code=303
             )
-        if module == "simulations":
+        if module in {"simulations", "md"}:
             return RedirectResponse(
                 f"{request.url_for('simulations_page')}?workspace={workspace_id}", status_code=303
             )
@@ -172,7 +187,13 @@ def register_workspace_routes(
         return templates.TemplateResponse(
             request=request,
             name="workspace.html",
-            context=context(request, "workspace", workspace=workspace, entries=entries),
+            context=context(
+                request,
+                "workspace",
+                workspace=workspace,
+                entries=entries,
+                workspace_guide=WORKSPACE_GUIDES.get(module),
+            ),
         )
 
     app.include_router(router)

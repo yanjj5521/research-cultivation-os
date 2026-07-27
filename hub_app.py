@@ -46,7 +46,7 @@ from services.progression import normalize_realm_labels
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
-VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "2.0.1"
+VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "2.0.2"
 
 app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"
@@ -410,7 +410,35 @@ def startup() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "version": VERSION, "database": HUB_DB_PATH.name}
+    try:
+        with connect_hub() as conn:
+            conn.execute("SELECT 1").fetchone()
+            active_members = int(
+                conn.execute("SELECT COUNT(*) n FROM hub_users WHERE active=1").fetchone()["n"]
+            )
+        backups = sorted(
+            HUB_BACKUP_DIR.glob("hub_*.db"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        return {
+            "status": "ok",
+            "version": VERSION,
+            "database": "ready",
+            "active_members": active_members,
+            "latest_backup": backups[0].name if backups else None,
+        }
+    except Exception:
+        return JSONResponse(
+            {
+                "status": "degraded",
+                "version": VERSION,
+                "database": "unavailable",
+                "detail": "中心数据库暂不可用。",
+            },
+            status_code=503,
+            headers={"Retry-After": "30"},
+        )
 
 
 @app.get("/", response_class=HTMLResponse, name="hub_home")
@@ -451,7 +479,9 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     ip = client_ip(request)
     if not login_allowed(ip):
         flash(request, "登录尝试过多，请10分钟后再试。", "error")
-        return RedirectResponse("/", status_code=303)
+        response = RedirectResponse("/", status_code=303)
+        response.headers["Retry-After"] = "600"
+        return response
     with connect_hub() as conn:
         row = conn.execute("SELECT * FROM hub_users WHERE username=? AND active=1", (username.strip().lower(),)).fetchone()
         if not row or not verify_password(password, row["password_salt"], row["password_hash"]):
@@ -659,7 +689,16 @@ def password_change(request: Request, current_password: str = Form(...), new_pas
             flash(request, str(exc), "error")
             return RedirectResponse("/me", status_code=303)
         audit(conn, int(user["id"]), "password_change", "修改密码", request)
-    flash(request, "密码已修改。")
+    credentials_retired = False
+    if user["role"] == "admin" and HUB_ADMIN_PATH.exists():
+        HUB_ADMIN_PATH.unlink(missing_ok=True)
+        credentials_retired = True
+    flash(
+        request,
+        "密码已修改；首次一次性凭据文件已销毁，API Token 仍可在本页查看。"
+        if credentials_retired
+        else "密码已修改。",
+    )
     return RedirectResponse("/me", status_code=303)
 
 
@@ -715,7 +754,22 @@ def admin_page(request: Request):
         releases=[dict(row) for row in conn.execute("SELECT * FROM hub_releases ORDER BY id DESC")]
         audits=[dict(row) for row in conn.execute("SELECT a.*,u.display_name FROM hub_audit_log a LEFT JOIN hub_users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 30")]
     backup_files = sorted(HUB_BACKUP_DIR.glob("hub_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return templates.TemplateResponse(request=request,name="admin.html",context=hub_context(request,"admin",users=users,invites=invites,releases=releases,audits=audits,admin_credentials_path=str(HUB_ADMIN_PATH),backup_count=len(backup_files),last_backup=backup_files[0].name if backup_files else "尚无"))
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context=hub_context(
+            request,
+            "admin",
+            users=users,
+            invites=invites,
+            releases=releases,
+            audits=audits,
+            admin_credentials_path=str(HUB_ADMIN_PATH),
+            admin_credentials_exists=HUB_ADMIN_PATH.exists(),
+            backup_count=len(backup_files),
+            last_backup=backup_files[0].name if backup_files else "尚无",
+        ),
+    )
 
 
 @app.post("/admin/invites", name="hub_invite_create")
@@ -780,7 +834,8 @@ def admin_backup(request:Request,csrf_value:str=Form(..., alias="_csrf")):
 
 
 @app.get("/api/v1/ping")
-def api_ping(): return {"status":"ok","version":VERSION,"mode":"coordination-hub"}
+def api_ping():
+    return {"status": "ok", "version": VERSION, "mode": "coordination-hub"}
 
 
 @app.get("/api/v1/bootstrap")

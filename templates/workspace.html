@@ -6,6 +6,17 @@
   <div class="page-actions"><a class="soft-button" href="{{ url_for('workspaces_page') }}">管理工作区</a><a class="primary-button" href="{{ url_for('upload') }}?workspace_id={{ workspace.id }}">收录资料</a></div>
 </div>
 
+{% if workspace_guide %}
+<section class="workspace-guide panel workspace-accent-{{ workspace.accent }}">
+  <div><span class="eyebrow">{{ workspace_guide.kicker }}</span><strong>{{ workspace_guide.note }}</strong></div>
+  <ol>{% for stage in workspace_guide.stages %}<li><span>{{ loop.index }}</span>{{ stage }}</li>{% endfor %}</ol>
+  <div class="workspace-guide-actions">
+    <a href="{{ url_for('upload') }}?workspace_id={{ workspace.id }}">上传资料</a>
+    <a href="{{ url_for('note_new') }}?workspace_id={{ workspace.id }}">写方法/结果笔记</a>
+  </div>
+</section>
+{% endif %}
+
 {% if entries %}
 <section class="entry-grid workspace-entry-grid">
   {% for entry in entries %}

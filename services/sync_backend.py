@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import urllib.request
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -42,6 +44,9 @@ class BackendCapabilities:
 class SyncBackend(Protocol):
     capabilities: BackendCapabilities
 
+    def ping(self, timeout: float = 3.0) -> dict[str, Any]:
+        ...
+
     def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
         ...
 
@@ -62,6 +67,9 @@ class DisabledBackend:
         production_scale=False,
         detail="仅保留版本化扩展接口，本机不会排队、上传或拉取任何状态。",
     )
+
+    def ping(self, timeout: float = 3.0) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
 
     def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
         raise RuntimeError(self.capabilities.detail)
@@ -86,6 +94,9 @@ class ReservedCloudBackend:
         detail="协议与适配器插槽已经固定，但服务器、登录和数据库尚未实现。",
     )
 
+    def ping(self, timeout: float = 3.0) -> dict[str, Any]:
+        raise RuntimeError(self.capabilities.detail)
+
     def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
         raise RuntimeError(self.capabilities.detail)
 
@@ -109,7 +120,7 @@ class LegacyHubBackend:
             ready=ready,
             production_scale=False,
             detail=(
-                "适用于小范围自托管；它是兼容适配器，不作为成百上千用户的生产后端。"
+                "适用于小范围自托管；客户端带超时、退避、熔断和幂等事件保护。"
                 if ready
                 else "需要填写轻量同行会地址与 Token。"
             ),
@@ -136,12 +147,15 @@ class LegacyHubBackend:
             headers={
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
-                "User-Agent": "ResearchCultivationOS/1.5",
+                "User-Agent": "ResearchCultivationOS/2.0.2",
                 "X-Sync-Contract": SYNC_CONTRACT_VERSION,
             },
         )
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def ping(self, timeout: float = 3.0) -> dict[str, Any]:
+        return self._request("GET", "/api/v1/ping", timeout=timeout)
 
     def bootstrap(self, timeout: float = 5.0) -> dict[str, Any]:
         return self._request("GET", "/api/v1/bootstrap", timeout=timeout)
@@ -178,3 +192,28 @@ def all_backend_capabilities() -> list[dict[str, Any]]:
         LegacyHubBackend("", "").capabilities.as_dict(),
         ReservedCloudBackend.capabilities.as_dict(),
     ]
+
+
+def validate_hub_url(value: str) -> tuple[bool, str]:
+    """Allow plain HTTP only on the current machine or a private LAN."""
+    url = (value or "").strip().rstrip("/")
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False, "中心地址格式无效。"
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False, "中心地址必须是完整的 http:// 或 https:// 地址。"
+    if parsed.username or parsed.password:
+        return False, "中心地址不能包含用户名或密码。"
+    if parsed.scheme == "https":
+        return True, "HTTPS 加密连接"
+    host = parsed.hostname.lower()
+    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local"):
+        return True, "仅限本机或局域网的 HTTP"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address and (address.is_private or address.is_loopback or address.is_link_local):
+        return True, "仅限局域网的 HTTP"
+    return False, "公网中心必须使用 HTTPS；HTTP 只允许本机或私有局域网地址。"

@@ -391,6 +391,22 @@ def dashboard(request: Request):
         xp = total_xp(conn)
         realm = current_realm(xp)
         streak = activity_streak(conn)
+        home_workspaces = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT id,workspace_key,name,icon,module,accent
+                FROM workspaces
+                WHERE active=1 AND workspace_key IN ('ml-lab','md-lab','comsol-lab')
+                ORDER BY CASE workspace_key
+                    WHEN 'ml-lab' THEN 1
+                    WHEN 'md-lab' THEN 2
+                    WHEN 'comsol-lab' THEN 3
+                    ELSE 9 END
+                """
+            )
+        ]
+        sync_provider = get_setting("sync_provider", "disabled")
 
         pending_review = pending_review_group(conn) if get_setting("review_popup", "1") == "1" else None
         data = context(
@@ -402,6 +418,13 @@ def dashboard(request: Request):
             streak=streak,
             pending_review=pending_review,
             profile=profile,
+            home_workspaces=home_workspaces,
+            home_sync_label=(
+                "轻量同行会 · 保护模式"
+                if sync_provider == "legacy_hub"
+                else "本地优先 · 联机关闭"
+            ),
+            home_sync_active=sync_provider == "legacy_hub",
             today_label=datetime.now().strftime("%Y年%m月%d日"),
         )
     return templates.TemplateResponse(request=request, name="dashboard.html", context=data)
@@ -1048,7 +1071,7 @@ def settings_get(request: Request):
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
-            portable_version=get_setting("portable_version", "2.0.1"),
+            portable_version=get_setting("portable_version", "2.0.2"),
         ),
     )
 
@@ -1339,7 +1362,7 @@ def backup(request: Request):
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "2.0.1"), "created_at": now_iso(), "database": DB_PATH.name}
+    manifest = {"version": get_setting("portable_version", "2.0.2"), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1785,7 +1808,7 @@ def portable_export():
                 zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "2.0.1"),
+                "version": get_setting("portable_version", "2.0.2"),
                 "created_at": now_iso(),
                 "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
             }

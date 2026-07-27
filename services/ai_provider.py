@@ -116,7 +116,7 @@ def generate_structured(
             "format": schema,
             "options": {"temperature": 0.2},
         }
-        headers = {"Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.2"}
+        headers = {"Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/2.0.2"}
         label = f"本地 Ollama · {model}"
     elif mode == "openai":
         endpoint = _endpoint(get_setting("ai_endpoint", "https://api.openai.com/v1/responses"))
@@ -141,7 +141,7 @@ def generate_structured(
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "ResearchCultivationOS/1.2",
+            "User-Agent": "ResearchCultivationOS/2.0.2",
         }
         label = f"外部模型 · {model}"
     else:

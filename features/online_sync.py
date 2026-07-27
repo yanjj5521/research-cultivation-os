@@ -13,7 +13,10 @@ from services.online_sync import (
     best_effort_sync,
     cached_value,
     queue_event,
+    retry_paused_events,
+    sync_health,
     sync_now,
+    test_connection,
 )
 from services.economy import balances as local_balances
 from services.profile_media import export_avatar_payload, import_avatar_payload
@@ -22,6 +25,7 @@ from services.sync_backend import (
     SYNC_CONTRACT_VERSION,
     all_backend_capabilities,
     build_sync_backend,
+    validate_hub_url,
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,19 +64,17 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
     @router.get("/online", response_class=HTMLResponse, name="online_page")
     def online_page(request: Request):
         provider = get_setting("sync_provider", "disabled")
+        hub_url = get_setting("hub_url", "")
+        hub_token = get_setting("hub_api_token", "")
         backend = build_sync_backend(
             provider,
-            get_setting("hub_url", ""),
-            get_setting("hub_api_token", ""),
+            hub_url,
+            hub_token,
         )
+        health = sync_health()
         with connect() as conn:
-            queue_stats = dict(conn.execute(
-                """SELECT COUNT(*) total,
-                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending,
-                   SUM(CASE WHEN status='synced' THEN 1 ELSE 0 END) synced
-                   FROM online_sync_queue"""
-            ).fetchone())
             recent = [dict(row) for row in conn.execute("SELECT * FROM online_sync_queue ORDER BY id DESC LIMIT 12")]
+        url_ok, url_policy = validate_hub_url(hub_url) if hub_url else (True, "尚未配置中心地址")
         return templates.TemplateResponse(
             request=request,
             name="online.html",
@@ -83,17 +85,20 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 sync_capabilities=backend.capabilities.as_dict(),
                 backend_options=all_backend_capabilities(),
                 contract_version=SYNC_CONTRACT_VERSION,
-                hub_url=get_setting("hub_url", ""),
-                hub_token=get_setting("hub_api_token", ""),
+                hub_url=hub_url,
+                hub_token_configured=bool(hub_token.strip()),
+                hub_url_ok=url_ok,
+                hub_url_policy=url_policy,
                 auto_sync=get_setting("hub_auto_sync", "0") == "1",
                 theme=_theme(),
-                queue_stats=queue_stats,
+                queue_stats=health["queue"],
+                sync_health=health,
                 recent=recent,
                 last_sync=cached_value("last_sync", {}),
                 last_error=cached_value("last_sync_error", {}),
                 hub_state=cached_value("hub_state", {}),
                 latest_release=cached_value("latest_release", None),
-                local_version=get_setting("portable_version", "2.0.1"),
+                local_version=get_setting("portable_version", "2.0.2"),
             ),
         )
 
@@ -107,7 +112,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         )
         return {
             "application": "Research Cultivation OS",
-            "local_version": get_setting("portable_version", "2.0.1"),
+            "local_version": get_setting("portable_version", "2.0.2"),
             "active_backend": backend.capabilities.as_dict(),
             "available_backends": all_backend_capabilities(),
             "data_policy": {
@@ -115,6 +120,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 "queued_while_disabled": False,
                 "cloud_v2_implemented": False,
             },
+            "reliability_policy": sync_health()["policy"],
         }
 
     @router.post("/online/settings", name="online_settings_save")
@@ -129,12 +135,20 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             flash(request, "规模化云端仍是预留接口，当前不能启用。", "error")
             return RedirectResponse(request.url_for("online_page"), status_code=303)
         url = hub_url.strip().rstrip("/")
-        if url and not (url.startswith("http://") or url.startswith("https://")):
-            flash(request, "中心地址必须以 http:// 或 https:// 开头。", "error")
-            return RedirectResponse(request.url_for("online_page"), status_code=303)
+        existing_token = get_setting("hub_api_token", "").strip()
+        token = hub_api_token.strip() or existing_token
+        if sync_provider == "legacy_hub":
+            url_ok, url_message = validate_hub_url(url)
+            if not url_ok:
+                flash(request, url_message, "error")
+                return RedirectResponse(request.url_for("online_page"), status_code=303)
+            if not token:
+                flash(request, "启用轻量同行会前必须填写 Token。", "error")
+                return RedirectResponse(request.url_for("online_page"), status_code=303)
         set_setting("sync_provider", sync_provider)
         set_setting("hub_url", url)
-        set_setting("hub_api_token", hub_api_token.strip())
+        if hub_api_token.strip():
+            set_setting("hub_api_token", hub_api_token.strip())
         set_setting(
             "hub_auto_sync",
             "1" if sync_provider == "legacy_hub" and auto_sync == "1" else "0",
@@ -143,7 +157,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             request,
             "联机扩展保持关闭，本机不会上传数据。"
             if sync_provider == "disabled"
-            else "轻量同行会兼容设置已保存。",
+            else "轻量同行会兼容设置已保存；可先检测连接，再决定是否自动同步。",
         )
         return RedirectResponse(request.url_for("online_page"), status_code=303)
 
@@ -166,14 +180,34 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             queue_event(conn, "profile_updated", profile)
             queue_event(conn, "personalization_updated", _theme())
             conn.commit()
-        result = sync_now()
+        result = sync_now(force=True)
         flash(request, result["message"], "success" if result["ok"] else "error")
         return RedirectResponse(request.url_for("online_page"), status_code=303)
 
     @router.post("/online/sync", name="online_sync_now")
     def online_sync_now(request: Request):
-        result = sync_now()
+        result = sync_now(force=True)
         flash(request, f"{result['message']} 本次确认 {result.get('synced', 0)} 个事件。", "success" if result["ok"] else "error")
+        return RedirectResponse(request.url_for("online_page"), status_code=303)
+
+    @router.post("/online/test", name="online_connection_test")
+    def online_connection_test(request: Request):
+        result = test_connection()
+        flash(request, result["message"], "success" if result["ok"] else "error")
+        return RedirectResponse(request.url_for("online_page"), status_code=303)
+
+    @router.post("/online/retry-paused", name="online_retry_paused")
+    def online_retry_paused(request: Request):
+        count = retry_paused_events()
+        if not count:
+            flash(request, "当前没有暂停事件。")
+            return RedirectResponse(request.url_for("online_page"), status_code=303)
+        result = sync_now(force=True)
+        flash(
+            request,
+            f"已恢复 {count} 个事件。{result['message']}",
+            "success" if result["ok"] else "error",
+        )
         return RedirectResponse(request.url_for("online_page"), status_code=303)
 
     @router.post("/online/theme", name="online_theme_save")
@@ -299,7 +333,10 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                         if not workspace_key or not name:
                             continue
                         module = str(item.get("module", "knowledge"))
-                        if module not in {"knowledge", "experiments", "simulations", "datasets"}:
+                        if module not in {
+                            "knowledge", "experiments", "simulations", "datasets",
+                            "ml", "md", "comsol",
+                        }:
                             module = "knowledge"
                         accent = str(item.get("accent", "clay"))
                         if accent not in {"clay", "sage", "ink", "amber"}:

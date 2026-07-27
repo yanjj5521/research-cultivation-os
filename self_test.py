@@ -24,7 +24,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v2.0.1 loop.
+    """Exercise the complete v2.0.2 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -151,24 +151,39 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
 
     with connect() as conn:
         default_workspaces = {
-            row["module"]: dict(row)
+            row["workspace_key"]: dict(row)
             for row in conn.execute(
-                "SELECT * FROM workspaces WHERE workspace_key IN ('eg-lab','lammps-lab','dataset-lab')"
+                """
+                SELECT * FROM workspaces
+                WHERE workspace_key IN (
+                    'eg-lab','lammps-lab','dataset-lab','ml-lab','md-lab','comsol-lab'
+                )
+                """
             )
         }
-    for module in ("experiments", "simulations", "datasets"):
-        workspace_item = default_workspaces.get(module)
+    workspace_modules = {
+        "eg-lab": "experiments",
+        "lammps-lab": "simulations",
+        "dataset-lab": "datasets",
+        "ml-lab": "ml",
+        "md-lab": "md",
+        "comsol-lab": "comsol",
+    }
+    for workspace_key, module in workspace_modules.items():
+        workspace_item = default_workspaces.get(workspace_key)
         if not workspace_item:
-            failures.append(f"default {module} workspace was not initialized")
+            failures.append(f"default {workspace_key} workspace was not initialized")
             continue
+        if workspace_item["module"] != module:
+            failures.append(f"default {workspace_key} workspace used the wrong module")
         response = client.get(f"/workspaces/{workspace_item['id']}")
         _check_response(failures, f"{module} workspace open", response)
         if workspace_item["name"] not in response.text:
             failures.append(f"{module} workspace did not open its personalized module page")
 
-    experiment_workspace = default_workspaces.get("experiments")
-    simulation_workspace = default_workspaces.get("simulations")
-    dataset_workspace = default_workspaces.get("datasets")
+    experiment_workspace = default_workspaces.get("eg-lab")
+    simulation_workspace = default_workspaces.get("lammps-lab")
+    dataset_workspace = default_workspaces.get("dataset-lab")
     if experiment_workspace:
         _check_response(
             failures,
@@ -229,7 +244,10 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     _check_response(failures, "pending review dashboard", dashboard)
     if "到了提取时间" not in dashboard.text:
         failures.append("dashboard did not surface the pending review")
-    for marker in ("mountain-gate", "今日一诗", "gate-dual-search", "搜知识库", "联网找论文", "gate-shortcuts"):
+    for marker in (
+        "mountain-gate", "今日一诗", "gate-dual-search", "搜知识库", "联网找论文",
+        "gate-shortcuts", "home-workbench-dock", "ML", "MD", "COMSOL", "本地优先 · 联机关闭",
+    ):
         if marker not in dashboard.text:
             failures.append(f"light mountain-gate dashboard missed: {marker}")
     if 'formaction="http://testserver/search"' not in dashboard.text or 'formaction="http://testserver/discover"' not in dashboard.text:
@@ -589,6 +607,17 @@ def main() -> None:
             failures.append("scale-ready sync interface was not disabled by default")
         if capability_data.get("data_policy", {}).get("cloud_v2_implemented"):
             failures.append("reserved cloud backend incorrectly reported as implemented")
+        reliability = capability_data.get("reliability_policy", {})
+        expected_reliability = {
+            "auto_timeout_seconds": 1.5,
+            "failure_threshold": 3,
+            "circuit_pause_seconds": 300,
+            "dead_letter_attempts": 6,
+            "respects_retry_after": True,
+        }
+        for key, expected in expected_reliability.items():
+            if reliability.get(key) != expected:
+                failures.append(f"sync reliability policy mismatch for {key}")
     knowledge_export = client.get("/knowledge/export")
     _check_response(failures, "knowledge export", knowledge_export)
     try:
@@ -614,8 +643,23 @@ def main() -> None:
             failures.append("no study plan")
         if conn.execute("SELECT COUNT(*) n FROM daily_missions").fetchone()["n"] < 1:
             failures.append("no daily missions")
-    if get_setting("portable_version") != "2.0.1":
-        failures.append("portable version was not migrated to 2.0.1")
+        default_keys = {
+            row["workspace_key"]
+            for row in conn.execute(
+                """
+                SELECT workspace_key FROM workspaces
+                WHERE workspace_key IN (
+                    'eg-lab','lammps-lab','dataset-lab','ml-lab','md-lab','comsol-lab'
+                )
+                """
+            )
+        }
+        if default_keys != {
+            "eg-lab", "lammps-lab", "dataset-lab", "ml-lab", "md-lab", "comsol-lab",
+        }:
+            failures.append("six default workspaces were not initialized")
+    if get_setting("portable_version") != "2.0.2":
+        failures.append("portable version was not migrated to 2.0.2")
     if len(REALM_STAGES) != 39:
         failures.append(f"realm system expected 39 stages, got {len(REALM_STAGES)}")
     requirements = [stage.required_xp for stage in REALM_STAGES[1:]]
@@ -645,7 +689,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v2.0.1 light mountain-gate dashboard, trials, workspaces, knowledge export and local database are ready.")
+        print("Core pages, v2.0.2 light mountain-gate dashboard, six workspaces, sync guardrails, knowledge export and local database are ready.")
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ if __name__ == "__main__":
         print(f"Port {PORT} is occupied by another program.")
         input("Press Enter to close...")
     else:
-        print("\nResearch Cultivation OS Shared Hub v2.0")
+        print("\nResearch Cultivation OS Shared Hub v2.0.2")
         print(f"Local admin page: http://{LOCAL_HOST}:{PORT}")
         print("LAN address: http://<this-computer-LAN-IP>:5050")
         print("For Internet access, use Tailscale Funnel, a named Cloudflare Tunnel, or a small VPS.")

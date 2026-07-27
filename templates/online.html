@@ -24,9 +24,9 @@
 </section>
 
 <section class="sync-summary">
-  <div class="metric-card"><small>当前后端</small><strong>{{ sync_capabilities.label }}</strong><span>{{ sync_capabilities.detail }}</span></div>
-  <div class="metric-card"><small>待同步事件</small><strong>{{ queue_stats.pending or 0 }}</strong><span>关闭状态不会新增队列</span></div>
-  <div class="metric-card"><small>已同步事件</small><strong>{{ queue_stats.synced or 0 }}</strong><span>仅保留旧版历史记录</span></div>
+  <div class="metric-card sync-health-{{ sync_health.tone }}"><small>保护状态</small><strong>{{ sync_health.label }}</strong><span>{% if sync_health.circuit_open %}本地功能继续工作，自动同步稍后恢复{% else %}失败不会阻塞本地科研流程{% endif %}</span></div>
+  <div class="metric-card"><small>待同步 / 延后</small><strong>{{ queue_stats.pending or 0 }} / {{ queue_stats.deferred or 0 }}</strong><span>按退避时间逐步重试</span></div>
+  <div class="metric-card"><small>已同步 / 暂停</small><strong>{{ queue_stats.synced or 0 }} / {{ queue_stats.paused or 0 }}</strong><span>永久错误等待人工处理</span></div>
   <div class="metric-card"><small>科研原文件</small><strong>本地</strong><span>不进入联机事件</span></div>
 </section>
 
@@ -41,11 +41,12 @@
         <option value="cloud_v2" disabled>规模化云端 v2 · 尚未实现</option>
       </select>
     </label>
-    <label><span>轻量中心地址</span><input name="hub_url" value="{{ hub_url }}" placeholder="仅选择轻量同行会时需要"></label>
-    <label><span>轻量中心 Token</span><input type="password" name="hub_api_token" value="{{ hub_token }}" autocomplete="off" placeholder="关闭模式可留空"></label>
+    <label><span>轻量中心地址</span><input name="hub_url" value="{{ hub_url }}" placeholder="例如 http://192.168.1.20:5050"></label>
+    <small class="form-help {% if not hub_url_ok %}text-danger{% endif %}">{{ hub_url_policy }}</small>
+    <label><span>轻量中心 Token</span><input type="password" name="hub_api_token" autocomplete="new-password" placeholder="{% if hub_token_configured %}已安全保存；留空保持不变{% else %}从“我的联机主页”复制{% endif %}"></label>
     <label class="check-label"><input type="checkbox" name="auto_sync" value="1" {% if auto_sync %}checked{% endif %}>仅在轻量同行会模式下自动同步</label>
     <button class="primary-button">保存模式</button>
-    <small class="form-help">选择“关闭”后，任务、洞府与个人主页操作都不会进入同步队列。</small>
+    <small class="form-help">选择“关闭”后不会新建同步队列；启用时，公网地址必须使用 HTTPS，HTTP 只允许本机或私有局域网。</small>
   </form>
 
   <section class="panel">
@@ -60,10 +61,42 @@
   </section>
 </div>
 
+<section class="content-grid equal online-control-grid">
+  <article class="panel admin-explainer">
+    <div class="panel-head simple"><div><span class="eyebrow">Administrator</span><h2>管理员是怎样建立的</h2></div><span class="control-seal">主</span></div>
+    <ol class="admin-setup-steps">
+      <li><b>1</b><span><strong>首次启动自动建立</strong><small>中心数据库中没有管理员时，系统只创建一个 <code>admin</code> 角色。</small></span></li>
+      <li><b>2</b><span><strong>一次性凭据留在主机</strong><small>用户名、随机密码和 Token 写入 <code>instance/HUB_ADMIN_CREDENTIALS.txt</code>，不会进入 Git 或便携包。</small></span></li>
+      <li><b>3</b><span><strong>登录后立即换密码</strong><small>管理员生成邀请码、停用成员、发布版本和备份中心；普通成员不能把自己升为管理员。</small></span></li>
+    </ol>
+    <p class="privacy-boundary"><b>权限边界：</b>管理员只能看中心里的公开主页、资料卡、资产和同步审计，不能读取成员电脑上的论文、实验、数据集或附件。</p>
+  </article>
+
+  <article class="panel reliability-guard">
+    <div class="panel-head simple"><div><span class="eyebrow">Offline-first guard</span><h2>联机不稳定保护</h2></div><span class="control-seal">稳</span></div>
+    <div class="guardrail-grid">
+      <div><b>{{ sync_health.policy.auto_timeout_seconds }}s</b><span>自动同步超时</span></div>
+      <div><b>{{ sync_health.policy.failure_threshold }}次</b><span>失败后熔断</span></div>
+      <div><b>5min</b><span>暂停后探测</span></div>
+      <div><b>{{ sync_health.policy.dead_letter_attempts }}次</b><span>转人工处理</span></div>
+    </div>
+    <ul>
+      <li>每个事件有唯一编号，重复发送不会重复奖励或重复写入。</li>
+      <li>临时断网按指数退避并加入抖动，同时遵守中心的 Retry-After。</li>
+      <li>地址或 Token 错误不会无限重试；事件保留本地，修复后手动恢复。</li>
+    </ul>
+    <div class="button-row">
+      <form method="post" action="{{ url_for('online_connection_test') }}"><button class="soft-button" {% if sync_provider != 'legacy_hub' %}disabled{% endif %}>检测地址与 Token</button></form>
+      {% if queue_stats.paused %}<form method="post" action="{{ url_for('online_retry_paused') }}"><button class="primary-button">恢复 {{ queue_stats.paused }} 个暂停事件</button></form>{% endif %}
+    </div>
+    {% if sync_health.last_probe.message %}<small class="probe-result">{{ sync_health.last_probe.at[:16].replace('T',' ') }} · {{ sync_health.last_probe.message }}</small>{% endif %}
+  </article>
+</section>
+
 {% if sync_provider == 'legacy_hub' %}
 <section class="panel legacy-sync-panel">
   <div class="panel-head simple"><div><span class="eyebrow">Compatibility only</span><h2>轻量同行会操作</h2></div>{% if hub_url %}<a href="{{ hub_url }}" target="_blank" rel="noopener">打开同行会</a>{% endif %}</div>
-  <p>该适配器仅用于已有的小团队部署，不承诺支持成百上千人。</p>
+  <p>该适配器只服务十人以内的小团队；本地操作先完成，联机成功与否不会决定资料是否保存。</p>
   <div class="button-row">
     <form method="post" action="{{ url_for('online_connect') }}"><button class="primary-button">连接并合并状态</button></form>
     <form method="post" action="{{ url_for('online_sync_now') }}"><button class="soft-button">立即同步</button></form>
