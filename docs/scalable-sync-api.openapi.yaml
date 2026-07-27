@@ -4,7 +4,7 @@ info:
   version: 0.1.0-draft
   description: >
     Reserved v2 contract for a future multi-tenant backend. No production
-    server implements this contract in v1.5.
+    server implements this contract in v2.0.
 servers:
   - url: https://sync.example.invalid
     description: Placeholder only

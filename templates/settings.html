@@ -21,7 +21,7 @@
     <label class="check-label"><input type="checkbox" name="review_popup" value="1" {% if review_popup %}checked{% endif %}>打开主页时弹出尚未复盘的最近交付</label>
     <small class="form-help">系统只使用交付文件夹里的“复盘关键文本.txt”，不会悄悄扫描你的全部论文和私人资料。</small>
     <div class="settings-divider"></div>
-    <div><span class="eyebrow">Personalization</span><h2>诗句、境界与全部导航名称</h2></div>
+    <div id="personalization"><span class="eyebrow">Personalization</span><h2>诗句、境界与全部导航名称</h2></div>
     <label><span>山门每日诗句池（每行一句）</span><textarea name="poem_pool" rows="10">{{ poem_pool_text }}</textarea></label>
     <small class="form-help">系统按日期轮换，同一天刷新不乱跳；留空则使用内置古诗池，完全离线也能每日更换。</small>
     <label><span>境界名称（只修改等号右边，共{{ realm_names_text.splitlines()|length }}阶）</span><textarea name="realm_names" rows="18">{{ realm_names_text }}</textarea></label>

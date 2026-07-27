@@ -46,7 +46,7 @@ from services.progression import normalize_realm_labels
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
-VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "1.5.0"
+VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "2.0.0"
 
 app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"

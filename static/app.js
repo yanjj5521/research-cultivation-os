@@ -102,6 +102,16 @@
     } catch {
       // The timer still works in memory when browser storage is unavailable.
     }
+    const retreatParams = new URLSearchParams(window.location.search);
+    if (!timer.running && !timer.paused && !timer.completed) {
+      const requestedMinutes = Number.parseInt(retreatParams.get('minutes') || '', 10);
+      const requestedFocus = (retreatParams.get('focus') || '').trim().slice(0, 80);
+      if (Number.isFinite(requestedMinutes) && requestedMinutes > 0) {
+        timer.durationMs = Math.max(1, Math.min(480, requestedMinutes)) * 60 * 1000;
+        timer.remainingMs = timer.durationMs;
+      }
+      if (requestedFocus) timer.focus = requestedFocus;
+    }
 
     const persist = () => {
       try { localStorage.setItem(storageKey, JSON.stringify(timer)); } catch {}
@@ -225,6 +235,17 @@
     });
     document.addEventListener('visibilitychange', render);
   }
+
+  document.querySelectorAll('[data-recall-card]').forEach(card => {
+    const toggle = card.querySelector('[data-recall-toggle]');
+    const answer = card.querySelector('[data-recall-answer]');
+    toggle?.addEventListener('click', () => {
+      const revealed = !card.classList.contains('revealed');
+      card.classList.toggle('revealed', revealed);
+      if (answer) answer.hidden = !revealed;
+      toggle.textContent = revealed ? '收起线索，再想一次' : '想过了，揭示线索';
+    });
+  });
 
   setTimeout(() => document.querySelectorAll('.flash').forEach(el => el.remove()), 4200);
 })();

@@ -24,7 +24,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v1.5 loop.
+    """Exercise the complete v2.0 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -225,12 +225,43 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         ).fetchone()["n"] != 1:
             failures.append("dataset record was not scoped to its personal workspace")
 
+    _check_response(
+        failures,
+        "homepage quick capture",
+        client.post("/quick-capture", data={"content": "首页闪念必须能够立即保存进本地知识库。"}),
+    )
+    _check_response(
+        failures,
+        "homepage paper card source",
+        client.post(
+            "/upload",
+            data={
+                "title": "自检论文卡",
+                "kind": "document",
+                "domain": "电化学",
+                "tags": "paper-card, self-test",
+                "summary": "验证正式版首页能够重新展示本地论文卡。",
+            },
+            files={"files": ("homepage-paper.txt", b"paper card evidence", "text/plain")},
+        ),
+    )
+    with connect() as conn:
+        if conn.execute(
+            "SELECT COUNT(*) n FROM entries WHERE kind='idea' AND tags='首页闪念'"
+        ).fetchone()["n"] < 1:
+            failures.append("homepage quick capture did not save an idea entry")
+
     dashboard = client.get("/")
     _check_response(failures, "pending review dashboard", dashboard)
     if "到了提取时间" not in dashboard.text:
         failures.append("dashboard did not surface the pending review")
-    if dashboard.text.count("gate-shortcut") < 4 or "home-portal-grid" in dashboard.text:
-        failures.append("dashboard did not retain the compact mountain-gate shortcuts")
+    for marker in ("dashboard-v2", "今日修行闭环", "今日论文卡", "自检论文卡", "每日一问", "闪念收集", "完整备份"):
+        if marker not in dashboard.text:
+            failures.append(f"v2.0 one-screen dashboard missed: {marker}")
+    if 'formaction="http://testserver/search"' not in dashboard.text or 'formaction="http://testserver/discover"' not in dashboard.text:
+        failures.append("homepage did not expose both local knowledge and online paper search")
+    if "gate-shortcut" in dashboard.text or "mountain-gate" in dashboard.text:
+        failures.append("legacy mountain-gate dashboard was still rendered")
 
     review_landing = client.get("/review")
     _check_response(failures, "review landing separation", review_landing)
@@ -608,6 +639,8 @@ def main() -> None:
             failures.append("no study plan")
         if conn.execute("SELECT COUNT(*) n FROM daily_missions").fetchone()["n"] < 1:
             failures.append("no daily missions")
+    if get_setting("portable_version") != "2.0.0":
+        failures.append("portable version was not migrated to 2.0.0")
     if len(REALM_STAGES) != 39:
         failures.append(f"realm system expected 39 stages, got {len(REALM_STAGES)}")
     requirements = [stage.required_xp for stage in REALM_STAGES[1:]]
@@ -637,7 +670,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v1.5 navigation, trials, workspaces, knowledge export and local database are ready.")
+        print("Core pages, v2.0 one-screen dashboard, trials, workspaces, knowledge export and local database are ready.")
 
 
 if __name__ == "__main__":
