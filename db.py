@@ -20,34 +20,40 @@ DB_PATH = BASE_DIR / "instance" / "research_os.db"
 DEFAULT_NAV_LABELS = {
     "dashboard": "主页",
     "daily": "每日任务",
-    "review": "昨日复盘",
+    "cultivation": "修炼记录",
+    "review": "温故知新",
     "plans": "近期计划",
     "retreat": "闭关计时",
+    "trials": "秘境试炼",
     "alchemy": "炼丹炉",
     "world": "我的洞府",
     "profile": "个人主页",
     "assistant": "AI 协作",
-    "online": "联机同步",
+    "online": "联机扩展",
     "library": "知识库",
     "folders": "交付文件夹",
     "note_new": "写笔记",
     "upload": "上传资料",
     "search": "全库检索",
     "discover": "联网找论文",
-    "datasets": "数据集",
-    "experiments": "EG 实验",
-    "simulations": "LAMMPS",
-    "cultivation": "修炼记录",
     "workspaces": "工作区管理",
     "settings": "设置与备份",
-    "group_cultivation": "修炼与行动",
-    "group_knowledge": "我的知识库",
+    "group_cultivation": "今日修炼",
+    "group_knowledge": "知识与交付",
     "group_workspaces": "我的工作区",
-    "group_system": "系统与工具",
-    "more": "展开系统工具",
+    "group_growth": "秘境与成长",
+    "group_system": "协作与系统",
     "start": "开始修炼",
     "knowledge_export": "一键导出知识库",
     "backup": "完整备份",
+}
+
+LEGACY_NAV_DEFAULTS = {
+    "review": "昨日复盘",
+    "online": "联机同步",
+    "group_cultivation": "修炼与行动",
+    "group_knowledge": "我的知识库",
+    "group_system": "系统与工具",
 }
 
 
@@ -56,7 +62,7 @@ def normalize_nav_labels(value: Any) -> dict[str, str]:
     if isinstance(value, dict):
         for key, default in DEFAULT_NAV_LABELS.items():
             candidate = str(value.get(key, "")).strip()[:24]
-            if candidate:
+            if candidate and LEGACY_NAV_DEFAULTS.get(key) != candidate:
                 labels[key] = candidate
             elif key not in value:
                 labels[key] = default
@@ -497,6 +503,19 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS realm_tribulations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gate_key TEXT NOT NULL,
+                from_stage_key TEXT NOT NULL,
+                to_stage_key TEXT NOT NULL,
+                session_id INTEGER NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'active',
+                score INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY(session_id) REFERENCES review_sessions(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS special_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -543,6 +562,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_review_sources_date ON review_sources(source_date DESC, id);
             CREATE INDEX IF NOT EXISTS idx_review_sessions_status ON review_sessions(status, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_review_answers_due ON review_answers(next_due, self_rating);
+            CREATE INDEX IF NOT EXISTS idx_realm_tribulations_gate ON realm_tribulations(gate_key, status, id);
             CREATE INDEX IF NOT EXISTS idx_special_tasks_status ON special_tasks(status, created_at DESC);
             """
         )
@@ -569,6 +589,12 @@ def init_db() -> None:
         _add_column(conn, "quests", "workspace_id INTEGER")
         _add_column(conn, "quests", "xp_awarded INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "quests", "updated_at TEXT")
+        _add_column(conn, "online_sync_queue", "schema_version INTEGER NOT NULL DEFAULT 1")
+        _add_column(conn, "online_sync_queue", "aggregate_type TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "online_sync_queue", "aggregate_id TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "online_sync_queue", "sequence_no INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "online_sync_queue", "next_attempt_at TEXT")
+        _add_column(conn, "online_sync_queue", "dead_letter INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_workspace ON entries(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_workspace ON experiments(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_simulations_workspace ON simulations(workspace_id, updated_at DESC)")
@@ -605,6 +631,9 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             pass
 
+        had_sync_provider = conn.execute(
+            "SELECT 1 FROM settings WHERE key='sync_provider'"
+        ).fetchone() is not None
         defaults = {
             "site_name": "问道科研",
             "researcher_name": "准研一修士",
@@ -618,11 +647,13 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "1.4.0",
+            "portable_version": "1.5.0",
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
-            "hub_auto_sync": "1",
+            "hub_auto_sync": "0",
+            "sync_provider": "disabled",
+            "sync_contract_version": "2026-07-27",
             "ui_accent": "terracotta",
             "ui_density": "comfortable",
             "ui_scene": "warm",
@@ -636,6 +667,29 @@ def init_db() -> None:
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
+        if not had_sync_provider:
+            legacy_hub = conn.execute(
+                "SELECT value FROM settings WHERE key='hub_url'"
+            ).fetchone()
+            legacy_token = conn.execute(
+                "SELECT value FROM settings WHERE key='hub_api_token'"
+            ).fetchone()
+            if (
+                legacy_hub
+                and legacy_token
+                and str(legacy_hub["value"]).strip()
+                and str(legacy_token["value"]).strip()
+            ):
+                conn.execute(
+                    "UPDATE settings SET value='legacy_hub' WHERE key='sync_provider'"
+                )
+                conn.execute(
+                    "UPDATE settings SET value='1' WHERE key='hub_auto_sync'"
+                )
+            else:
+                conn.execute(
+                    "UPDATE settings SET value='0' WHERE key='hub_auto_sync'"
+                )
         realm_row = conn.execute("SELECT value FROM settings WHERE key='realm_names'").fetchone()
         try:
             realm_value = json.loads(realm_row["value"]) if realm_row else {}
@@ -654,7 +708,7 @@ def init_db() -> None:
             "UPDATE settings SET value=? WHERE key='nav_labels'",
             (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
         )
-        conn.execute("UPDATE settings SET value='1.4.0' WHERE key='portable_version'")
+        conn.execute("UPDATE settings SET value='1.5.0' WHERE key='portable_version'")
         ts = now_iso()
         default_workspaces = (
             ("eg-lab", "EG 实验", "验", "experiments", "配比、成型、电化学与力学实验台账", "clay", 10),

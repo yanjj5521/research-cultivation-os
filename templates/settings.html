@@ -26,7 +26,7 @@
     <small class="form-help">系统按日期轮换，同一天刷新不乱跳；留空则使用内置古诗池，完全离线也能每日更换。</small>
     <label><span>境界名称（只修改等号右边，共{{ realm_names_text.splitlines()|length }}阶）</span><textarea name="realm_names" rows="18">{{ realm_names_text }}</textarea></label>
     <label><span>导航名称与分组标题（只修改等号右边）</span><textarea name="nav_labels" rows="24">{{ nav_labels_text }}</textarea></label>
-    <small class="form-help">稳定键和网页路由不会随显示名称改变。诗句、31阶境界、全部导航标签和工作区定义都会进入 v4 个性化包，升级后可无缝导入。</small>
+    <small class="form-help">稳定键和网页路由不会随显示名称改变。诗句、39阶境界、全部导航标签和工作区定义都会进入 v5 个性化包；旧版自定义名称会迁移到最接近的新境界。</small>
     <button class="primary-button">保存设置</button>
   </form>
   <section class="panel backup-panel">

@@ -7,7 +7,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from db import connect, now_iso
+from db import connect, now_iso, total_xp
 from services.ai_provider import provider_status
 from services.review_engine import (
     combine_sources,
@@ -15,6 +15,10 @@ from services.review_engine import (
     grade_answer,
     next_due_from_rating,
     pending_review_group,
+)
+from services.progression import (
+    TRIBULATION_GATE_BY_KEY,
+    first_pending_tribulation,
 )
 
 
@@ -34,11 +38,21 @@ def _pill_quantity(conn, key: str) -> int:
     return int(row["quantity"]) if row else 0
 
 
+def _passed_gate_keys(conn) -> set[str]:
+    return {
+        str(row["gate_key"])
+        for row in conn.execute(
+            "SELECT DISTINCT gate_key FROM realm_tribulations WHERE status='passed'"
+        )
+    }
+
+
 def register_review_routes(
     app,
     templates,
     context: Callable[..., dict[str, Any]],
     flash: Callable[[Request, str, str], None],
+    current_realm: Callable[[int], dict[str, Any]],
 ):
     router = APIRouter()
 
@@ -54,6 +68,7 @@ def register_review_routes(
                            COALESCE(ROUND(AVG(a.score)),0) AS average_score
                     FROM review_sessions s
                     LEFT JOIN review_answers a ON a.session_id=s.id
+                    WHERE s.mode='yesterday'
                     GROUP BY s.id
                     ORDER BY s.id DESC
                     LIMIT 12
@@ -65,7 +80,6 @@ def register_review_routes(
                 "SELECT COUNT(*) n FROM review_answers WHERE next_due IS NOT NULL AND next_due<=?",
                 (date.today().isoformat(),),
             ).fetchone()["n"]
-            tribulation_pills = _pill_quantity(conn, "tribulation_pill")
         return templates.TemplateResponse(
             request=request,
             name="review.html",
@@ -76,7 +90,6 @@ def register_review_routes(
                 history=history,
                 source_count=source_count,
                 due_count=due_count,
-                tribulation_pills=tribulation_pills,
                 ai_status=provider_status(),
                 session=None,
                 questions=[],
@@ -84,10 +97,56 @@ def register_review_routes(
             ),
         )
 
+    @router.get("/trials", response_class=HTMLResponse, name="trials_page")
+    def trials_page(request: Request):
+        with connect() as conn:
+            xp = total_xp(conn)
+            passed_gates = _passed_gate_keys(conn)
+            pending_gate = first_pending_tribulation(xp, passed_gates)
+            history = [
+                dict(row)
+                for row in conn.execute(
+                    """
+                    SELECT s.*,COUNT(a.id) AS answer_count,
+                           COALESCE(ROUND(AVG(a.score)),0) AS average_score,
+                           t.status AS tribulation_status,t.score AS tribulation_score
+                    FROM review_sessions s
+                    LEFT JOIN review_answers a ON a.session_id=s.id
+                    LEFT JOIN realm_tribulations t ON t.session_id=s.id
+                    WHERE s.mode IN ('beast','tribulation')
+                    GROUP BY s.id
+                    ORDER BY s.id DESC
+                    LIMIT 16
+                    """
+                )
+            ]
+            source_count = conn.execute(
+                "SELECT COUNT(*) n FROM review_sources"
+            ).fetchone()["n"]
+            tribulation_pills = _pill_quantity(conn, "tribulation_pill")
+        realm = current_realm(xp)
+        return templates.TemplateResponse(
+            request=request,
+            name="trials.html",
+            context=context(
+                request,
+                "trials",
+                realm=realm,
+                xp=xp,
+                pending_gate=pending_gate,
+                history=history,
+                source_count=source_count,
+                tribulation_pills=tribulation_pills,
+                ai_status=provider_status(),
+            ),
+        )
+
     @router.post("/review/start", name="review_start")
     def review_start(request: Request, mode: str = Form("yesterday")):
         allowed = {"yesterday", "beast", "tribulation"}
         mode = mode if mode in allowed else "yesterday"
+        gate = None
+        gate_title = ""
         with connect() as conn:
             pending = pending_review_group(conn) if mode == "yesterday" else None
             if mode == "yesterday":
@@ -108,10 +167,52 @@ def register_review_routes(
                 source_date = sources[0]["source_date"] if sources else ""
             if not sources:
                 flash(request, "还没有可用于出题的复盘关键文本。先完成一次交付并填写关键文本。", "error")
-                return RedirectResponse(request.url_for("review_page"), status_code=303)
-            if mode == "tribulation" and _pill_quantity(conn, "tribulation_pill") < 1:
-                flash(request, "渡劫需要一枚渡劫丹，请先去炼丹炉炼制。", "error")
-                return RedirectResponse(request.url_for("alchemy_page"), status_code=303)
+                return RedirectResponse(
+                    request.url_for(
+                        "review_page" if mode == "yesterday" else "trials_page"
+                    ),
+                    status_code=303,
+                )
+            if mode == "tribulation":
+                gate = first_pending_tribulation(
+                    total_xp(conn),
+                    _passed_gate_keys(conn),
+                )
+                if gate is None:
+                    flash(
+                        request,
+                        "雷劫只在金丹以上、修为达到下一大境界门槛时开启。",
+                        "error",
+                    )
+                    return RedirectResponse(
+                        request.url_for("trials_page"),
+                        status_code=303,
+                    )
+                active_attempt = conn.execute(
+                    """
+                    SELECT t.session_id
+                    FROM realm_tribulations t
+                    JOIN review_sessions s ON s.id=t.session_id
+                    WHERE t.gate_key=? AND t.status='active' AND s.status='active'
+                    ORDER BY t.id DESC LIMIT 1
+                    """,
+                    (gate.key,),
+                ).fetchone()
+                if active_attempt:
+                    return RedirectResponse(
+                        request.url_for(
+                            "review_session",
+                            session_id=int(active_attempt["session_id"]),
+                        ),
+                        status_code=303,
+                    )
+                if _pill_quantity(conn, "tribulation_pill") < 1:
+                    flash(request, "突破雷劫需要一枚渡劫丹，请先去炼丹炉炼制。", "error")
+                    return RedirectResponse(request.url_for("alchemy_page"), status_code=303)
+                gate_title = current_realm(total_xp(conn)).get(
+                    "tribulation_title",
+                    gate.title,
+                )
 
         count = {"yesterday": 3, "beast": 4, "tribulation": 5}[mode]
         questions, provider, fallback_reason = generate_questions(
@@ -121,8 +222,8 @@ def register_review_routes(
         )
         titles = {
             "yesterday": f"{source_date} 交付复盘",
-            "beast": "妖兽挑战 · 综合迁移",
-            "tribulation": "雷劫 · 五问渡关",
+            "beast": "万象秘境 · 综合迁移",
+            "tribulation": f"突破雷劫 · {gate_title or '五问渡关'}",
         }
         with connect() as conn:
             if mode == "tribulation":
@@ -155,6 +256,22 @@ def register_review_routes(
                 conn.execute(
                     "INSERT OR IGNORE INTO review_session_sources(session_id,review_source_id) VALUES (?,?)",
                     (session_id, source["id"]),
+                )
+            if mode == "tribulation" and gate is not None:
+                conn.execute(
+                    """
+                    INSERT INTO realm_tribulations(
+                        gate_key,from_stage_key,to_stage_key,session_id,status,created_at
+                    ) VALUES (?,?,?,?,?,?)
+                    """,
+                    (
+                        gate.key,
+                        gate.from_key,
+                        gate.to_key,
+                        session_id,
+                        "active",
+                        now_iso(),
+                    ),
                 )
             conn.commit()
         return RedirectResponse(
@@ -190,12 +307,18 @@ def register_review_routes(
                     (session_id,),
                 )
             ]
+            trial_result = conn.execute(
+                "SELECT * FROM realm_tribulations WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            trial_result = dict(trial_result) if trial_result else None
+        active_page = "review" if session["mode"] == "yesterday" else "trials"
         return templates.TemplateResponse(
             request=request,
             name="review.html",
             context=context(
                 request,
-                "review",
+                active_page,
                 pending=None,
                 history=[],
                 source_count=0,
@@ -206,6 +329,7 @@ def register_review_routes(
                 questions=questions,
                 answers=answers,
                 sources=sources,
+                trial_result=trial_result,
             ),
         )
 
@@ -231,6 +355,7 @@ def register_review_routes(
 
         result, provider, fallback_reason = grade_answer(question, answer)
         ts = now_iso()
+        completion_message = ""
         with connect() as conn:
             session_row = conn.execute("SELECT status,mode FROM review_sessions WHERE id=?", (session_id,)).fetchone()
             conn.execute(
@@ -267,10 +392,54 @@ def register_review_routes(
                     "UPDATE review_sessions SET status='completed',completed_at=? WHERE id=?",
                     (ts, session_id),
                 )
-                xp = {"yesterday": 8, "beast": 20, "tribulation": 40}.get(session_row["mode"], 8)
+                mode = str(session_row["mode"])
+                xp = {"yesterday": 8, "beast": 20}.get(mode, 8)
+                if mode == "tribulation":
+                    average_score = int(
+                        conn.execute(
+                            "SELECT COALESCE(ROUND(AVG(score)),0) score FROM review_answers WHERE session_id=?",
+                            (session_id,),
+                        ).fetchone()["score"]
+                    )
+                    passed = average_score >= 70
+                    conn.execute(
+                        """
+                        UPDATE realm_tribulations
+                        SET status=?,score=?,completed_at=?
+                        WHERE session_id=?
+                        """,
+                        (
+                            "passed" if passed else "failed",
+                            average_score,
+                            ts,
+                            session_id,
+                        ),
+                    )
+                    xp = 40 if passed else 8
+                    attempt = conn.execute(
+                        "SELECT gate_key,to_stage_key FROM realm_tribulations WHERE session_id=?",
+                        (session_id,),
+                    ).fetchone()
+                    target = (
+                        TRIBULATION_GATE_BY_KEY.get(attempt["gate_key"])
+                        if attempt
+                        else None
+                    )
+                    completion_message = (
+                        f"雷劫通过，境界已解锁：{target.title if target else '突破成功'}。"
+                        if passed
+                        else f"本次雷劫均分 {average_score}，达到 70 分才可突破；可整理薄弱点后再试。"
+                    )
                 conn.execute(
                     "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
-                    ("review_complete", xp, f"完成：{dict(session_row).get('mode', 'review')}", ts),
+                    (
+                        "tribulation_pass"
+                        if mode == "tribulation" and xp == 40
+                        else "review_complete",
+                        xp,
+                        f"完成：{mode}",
+                        ts,
+                    ),
                 )
             if fallback_reason:
                 conn.execute(
@@ -278,7 +447,12 @@ def register_review_routes(
                     (fallback_reason[:1000], session_id),
                 )
             conn.commit()
-        flash(request, "已保存评价。先看证据，再给自己一个掌握度判断。", "success")
+        flash(
+            request,
+            completion_message
+            or "已保存评价。先看证据，再给自己一个掌握度判断。",
+            "success",
+        )
         return RedirectResponse(
             f"{request.url_for('review_session', session_id=session_id)}#question-{question_index}",
             status_code=303,

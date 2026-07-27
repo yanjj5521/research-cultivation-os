@@ -47,10 +47,12 @@ from services.profile_media import PROFILE_DIR, current_avatar_filename
 from services.review_engine import pending_review_group
 from services.progression import (
     CULTIVATION_DIFFICULTY_LABELS,
+    REALM_INDEX,
     REALM_STAGES,
     default_realm_labels,
     fixed_cultivation_xp,
     normalize_realm_labels,
+    realm_state,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -189,36 +191,30 @@ def daily_poem(day: date | None = None) -> str:
     return pool[selected_day.toordinal() % len(pool)]
 
 
-def current_realm(xp: int) -> dict[str, Any]:
-    custom_names = configured_realm_names()
-    realms = [
-        (stage.threshold, custom_names[stage.key], stage.description, stage.key)
-        for stage in REALM_STAGES
-    ]
-    current_index = 0
-    for i, item in enumerate(realms):
-        if xp >= item[0]:
-            current_index = i
-        else:
-            break
-    threshold, name, description, realm_key = realms[current_index]
-    if current_index + 1 < len(realms):
-        next_threshold, next_name, _, next_key = realms[current_index + 1]
-        progress = int((xp - threshold) / max(next_threshold - threshold, 1) * 100)
-        remaining = max(next_threshold - xp, 0)
-    else:
-        next_threshold, next_name, next_key, progress, remaining = threshold, "已修成仙", realm_key, 100, 0
-    return {
-        "key": realm_key,
-        "name": name,
-        "description": description,
-        "threshold": threshold,
-        "next_threshold": next_threshold,
-        "next_name": next_name,
-        "next_key": next_key,
-        "progress": max(0, min(progress, 100)),
-        "remaining": remaining,
-    }
+def passed_tribulation_keys(conn=None) -> set[str]:
+    owns = conn is None
+    conn = conn or connect()
+    try:
+        return {
+            str(row["gate_key"])
+            for row in conn.execute(
+                "SELECT DISTINCT gate_key FROM realm_tribulations WHERE status='passed'"
+            )
+        }
+    finally:
+        if owns:
+            conn.close()
+
+
+def current_realm(
+    xp: int,
+    passed_gates: set[str] | None = None,
+) -> dict[str, Any]:
+    return realm_state(
+        xp,
+        configured_realm_names(),
+        passed_tribulation_keys() if passed_gates is None else passed_gates,
+    )
 
 
 def domains() -> list[str]:
@@ -358,7 +354,11 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "nav_workspaces": _workspaces,
         "nav_avatar_symbol": (_profile["avatar_symbol"] if _profile else "道") or "道",
         "avatar_file": current_avatar_filename(),
-        "hub_configured": bool(get_setting("hub_url", "").strip() and get_setting("hub_api_token", "").strip()),
+        "hub_configured": bool(
+            get_setting("sync_provider", "disabled") == "legacy_hub"
+            and get_setting("hub_url", "").strip()
+            and get_setting("hub_api_token", "").strip()
+        ),
     }
     base.update(extra)
     return base
@@ -1043,7 +1043,7 @@ def settings_get(request: Request):
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
-            portable_version=get_setting("portable_version", "1.4.0"),
+            portable_version=get_setting("portable_version", "1.5.0"),
         ),
     )
 
@@ -1129,6 +1129,7 @@ def export_json(request: Request):
         review_sources = [dict(row) for row in conn.execute("SELECT * FROM review_sources ORDER BY id")]
         review_sessions = [dict(row) for row in conn.execute("SELECT * FROM review_sessions ORDER BY id")]
         review_answers = [dict(row) for row in conn.execute("SELECT * FROM review_answers ORDER BY id")]
+        realm_tribulations = [dict(row) for row in conn.execute("SELECT * FROM realm_tribulations ORDER BY id")]
         special_tasks = [dict(row) for row in conn.execute("SELECT * FROM special_tasks ORDER BY id")]
         herb_inventory = [dict(row) for row in conn.execute("SELECT * FROM herb_inventory ORDER BY grade")]
         settings_rows = [dict(row) for row in conn.execute("SELECT key,value FROM settings WHERE key NOT IN ('hub_api_token') ORDER BY key")]
@@ -1143,7 +1144,8 @@ def export_json(request: Request):
         "asset_transactions": asset_transactions, "inventory_items": inventory_items,
         "player_profile": player_profile, "easter_eggs": easter_eggs,
         "review_sources": review_sources, "review_sessions": review_sessions,
-        "review_answers": review_answers, "special_tasks": special_tasks,
+        "review_answers": review_answers, "realm_tribulations": realm_tribulations,
+        "special_tasks": special_tasks,
         "herb_inventory": herb_inventory, "settings": settings_rows,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1332,7 +1334,7 @@ def backup(request: Request):
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "1.4.0"), "created_at": now_iso(), "database": DB_PATH.name}
+    manifest = {"version": get_setting("portable_version", "1.5.0"), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1695,15 +1697,31 @@ def cultivation_page(request: Request):
         ]
         ach = achievements(conn)
         streak = activity_streak(conn)
-    realm = current_realm(xp)
+        passed_gates = passed_tribulation_keys(conn)
+    realm = current_realm(xp, passed_gates)
     labels = configured_realm_names()
+    current_index = REALM_INDEX[realm["key"]]
     realm_path = [
         {
             "key": stage.key,
             "name": labels[stage.key],
             "threshold": stage.threshold,
+            "required_xp": stage.required_xp,
             "description": stage.description,
-            "state": "current" if stage.key == realm["key"] else ("passed" if xp >= stage.threshold else "locked"),
+            "state": (
+                "current"
+                if stage.key == realm["key"]
+                else (
+                    "passed"
+                    if REALM_INDEX[stage.key] < current_index
+                    else (
+                        "tribulation"
+                        if realm["tribulation_required"]
+                        and stage.key == realm["next_key"]
+                        else "locked"
+                    )
+                )
+            ),
         }
         for stage in REALM_STAGES
     ]
@@ -1762,7 +1780,7 @@ def portable_export():
                 zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "1.4.0"),
+                "version": get_setting("portable_version", "1.5.0"),
                 "created_at": now_iso(),
                 "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
             }
@@ -2184,7 +2202,7 @@ register_folder_routes(app, templates, context)
 register_foundation_ui_routes(app, templates, context)
 register_game_routes(app, templates, context, flash, current_realm)
 register_online_routes(app, templates, context, flash)
-register_review_routes(app, templates, context, flash)
+register_review_routes(app, templates, context, flash, current_realm)
 register_alchemy_routes(app, templates, context, flash)
 register_workspace_routes(app, templates, context, flash, entry_dict)
 register_backup_jobs(app)

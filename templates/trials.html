@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ nav_labels.trials }} · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head minimal-head">
+  <div>
+    <span class="eyebrow">Independent challenges</span>
+    <h1>{{ nav_labels.trials }}</h1>
+    <p>复盘只负责温故；综合迁移与境界突破在这里独立进行。所有问题仍只取自你自己保存的复盘关键文本。</p>
+  </div>
+  <div class="ai-state"><strong>{{ ai_status.label }}</strong><small>{{ ai_status.detail }}</small></div>
+</div>
+
+<section class="trial-realm-strip panel">
+  <div>
+    <small>当前境界</small>
+    <strong>{{ realm.name }}</strong>
+    <span>{{ xp }} 修为</span>
+  </div>
+  <div class="trial-realm-progress">
+    <span><i style="width:{{ realm.progress }}%"></i></span>
+    {% if realm.tribulation_required %}
+    <strong>修为已满，等待突破雷劫</strong>
+    {% else %}
+    <strong>距 {{ realm.next_name }} 还差 {{ realm.remaining }} 修为</strong>
+    {% endif %}
+  </div>
+  <a class="soft-button" href="{{ url_for('cultivation_page') }}">查看境界谱</a>
+</section>
+
+<div class="trial-grid">
+  <article class="panel trial-card trial-card-primary">
+    <span class="trial-mark">境</span>
+    <small>随时可入</small>
+    <h2>万象秘境</h2>
+    <p>从最近交付中抽取 4 道综合题，重点检查解释、迁移、边界与反例。它是一场独立试炼，不混入昨日复盘。</p>
+    <div class="trial-meta"><span>{{ source_count }} 份可用材料</span><span>无需丹药</span><span>固定 +20 修为</span></div>
+    <form method="post" action="{{ url_for('review_start') }}">
+      <input type="hidden" name="mode" value="beast">
+      <button class="primary-button large-button" {% if source_count < 1 %}disabled{% endif %}>进入秘境</button>
+    </form>
+  </article>
+
+  <article class="panel trial-card tribulation-gate {% if not realm.tribulation_required %}locked{% endif %}">
+    <span class="trial-mark">雷</span>
+    <small>只在突破前开启</small>
+    <h2>五问雷劫</h2>
+    {% if realm.tribulation_required and pending_gate %}
+    <p>你已到达 {{ realm.tribulation_title }} 的突破关口。五问均分达到 70 分才会解锁下一大境界。</p>
+    <div class="trial-meta"><span>渡劫丹 {{ tribulation_pills }}</span><span>五道证据题</span><span>通过 +40 修为</span></div>
+    <form method="post" action="{{ url_for('review_start') }}">
+      <input type="hidden" name="mode" value="tribulation">
+      <button class="primary-button large-button" {% if tribulation_pills < 1 or source_count < 1 %}disabled{% endif %}>启动突破雷劫</button>
+    </form>
+    {% if tribulation_pills < 1 %}<a class="trial-helper" href="{{ url_for('alchemy_page') }}">先去炼制渡劫丹 →</a>{% endif %}
+    {% else %}
+    <p>尚未到突破关口。只有身处金丹或更高境界，并且修为达到下一大境界门槛后，雷劫才会自动开启。</p>
+    <div class="trial-lock-note"><span>锁</span><strong>不是日常按钮，也不能提前刷题</strong></div>
+    {% endif %}
+  </article>
+</div>
+
+<section class="panel">
+  <div class="panel-head simple"><div><span class="eyebrow">Trial history</span><h2>秘境与雷劫记录</h2></div></div>
+  <div class="review-history">
+    {% for item in history %}
+    <a href="{{ url_for('review_session', session_id=item.id) }}">
+      <span>{{ '雷' if item.mode=='tribulation' else '境' }}</span>
+      <div>
+        <strong>{{ item.title }}</strong>
+        <small>{{ item.created_at|datecn }} · 已答 {{ item.answer_count }} 题 · 均分 {{ item.average_score }}{% if item.tribulation_status %} · {{ {'passed':'已突破','failed':'未通过','active':'进行中'}.get(item.tribulation_status,item.tribulation_status) }}{% endif %}</small>
+      </div>
+      <b>›</b>
+    </a>
+    {% else %}
+    <div class="empty-state"><p>完成第一场万象秘境后，这里会形成独立试炼记录。</p></div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

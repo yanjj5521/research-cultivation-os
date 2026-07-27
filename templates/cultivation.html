@@ -7,10 +7,18 @@
 </div>
 
 <section class="panel cultivation-hero">
-  <div><span class="eyebrow">Current Realm</span><h2>{{ realm.name }}</h2><p>{{ realm.description }}</p><div class="realm-progress"><span style="width:{{ realm.progress }}%"></span></div><small>{{ xp }} 修为 · 距 {{ realm.next_name }} 还差 {{ realm.remaining }} 修为</small></div>
+  <div><span class="eyebrow">Current Realm</span><h2>{{ realm.name }}</h2><p>{{ realm.description }}</p><div class="realm-progress"><span style="width:{{ realm.progress }}%"></span></div><small>{% if realm.tribulation_required %}{{ xp }} 修为 · 已达 {{ realm.next_name }} 门槛，需通过突破雷劫{% else %}{{ xp }} 修为 · 距 {{ realm.next_name }} 还差 {{ realm.remaining }} 修为{% endif %}</small></div>
   <div class="quality-ring"><strong>{{ quality }}%</strong><span>知识库完整度</span></div>
   <div class="cultivation-stat"><strong>{{ streak }}</strong><span>连续修炼天数</span></div>
 </section>
+
+{% if realm.tribulation_required %}
+<section class="panel breakthrough-callout">
+  <span>雷</span>
+  <div><small>Major breakthrough</small><strong>{{ realm.tribulation_title }}</strong><p>修为不会丢失，但下一大境界要在五问雷劫均分达到 70 分后解锁。</p></div>
+  <a class="primary-button" href="{{ url_for('trials_page') }}">前往渡劫</a>
+</section>
+{% endif %}
 
 <section class="task-type-contrast">
   <article><span>跨天</span><h2>修炼任务</h2><p>“能够独立判读 CV 曲线”“形成可复现 LJ 案例”。完成依据是证据，不是日期。</p></article>
@@ -60,10 +68,10 @@
 </div>
 
 <details class="panel realm-roadmap">
-  <summary><span><small>Realm Roadmap</small><strong>查看完整境界谱 · 共 {{ realm_path|length }} 阶，直至真仙</strong></span><b>⌄</b></summary>
+  <summary><span><small>Realm Roadmap</small><strong>查看完整境界谱 · 共 {{ realm_path|length }} 阶，直至圣人</strong></span><b>⌄</b></summary>
   <div class="realm-roadmap-grid">
     {% for stage in realm_path %}
-    <article class="realm-step {{ stage.state }}"><span>{{ loop.index }}</span><div><strong>{{ stage.name }}</strong><small>{{ stage.threshold }} 修为 · {{ stage.description }}</small></div></article>
+    <article class="realm-step {{ stage.state }}"><span>{{ '雷' if stage.state=='tribulation' else loop.index }}</span><div><strong>{{ stage.name }}</strong><small>本阶需 {{ stage.required_xp }} · 累计 {{ stage.threshold }} 修为<br>{{ stage.description }}</small></div></article>
     {% endfor %}
   </div>
 </details>
