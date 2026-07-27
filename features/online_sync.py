@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from db import connect, get_setting, now_iso, set_setting
 from services.online_sync import best_effort_sync, cached_value, queue_event, sync_now
 from services.economy import balances as local_balances
+from services.profile_media import export_avatar_payload, import_avatar_payload
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EXPORT_DIR = BASE_DIR / "storage" / "sync_exports"
@@ -30,6 +31,10 @@ def _theme() -> dict[str, Any]:
         "density": get_setting("ui_density", "comfortable"),
         "scene": get_setting("ui_scene", "warm"),
         "home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
+        "home_poem": get_setting(
+            "ui_home_poem",
+            "纸上得来终觉浅，绝知此事要躬行。——陆游",
+        ),
         "site_name": get_setting("site_name", "问道科研"),
         "realm_names": _json_setting("realm_names", []),
         "nav_labels": _json_setting("nav_labels", {}),
@@ -66,7 +71,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 last_error=cached_value("last_sync_error", {}),
                 hub_state=cached_value("hub_state", {}),
                 latest_release=cached_value("latest_release", None),
-                local_version=get_setting("portable_version", "1.2.0"),
+                local_version=get_setting("portable_version", "1.3.0"),
             ),
         )
 
@@ -117,7 +122,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
     def online_theme_save(
         request: Request,
         accent: str = Form("terracotta"), density: str = Form("comfortable"),
-        scene: str = Form("warm"), home_motto: str = Form(""),
+        scene: str = Form("warm"), home_motto: str = Form(""), home_poem: str = Form(""),
     ):
         allowed = {
             "accent": {"terracotta", "amber", "sage", "ink"},
@@ -129,11 +134,13 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             "density": density if density in allowed["density"] else "comfortable",
             "scene": scene if scene in allowed["scene"] else "warm",
             "home_motto": home_motto.strip()[:80] or "让科研更好玩一点",
+            "home_poem": home_poem.strip()[:120] or "纸上得来终觉浅，绝知此事要躬行。——陆游",
         }
         set_setting("ui_accent", values["accent"])
         set_setting("ui_density", values["density"])
         set_setting("ui_scene", values["scene"])
         set_setting("ui_home_motto", values["home_motto"])
+        set_setting("ui_home_poem", values["home_poem"])
         with connect() as conn:
             queue_event(conn, "personalization_updated", values)
             conn.commit()
@@ -146,11 +153,12 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         with connect() as conn:
             profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
         payload = {
-            "format": "research-cultivation-personalization-v2",
-            "schema_version": 2,
+            "format": "research-cultivation-personalization-v3",
+            "schema_version": 3,
             "exported_at": now_iso(),
             "theme": _theme(),
             "profile": {k: profile[k] for k in ("display_name", "title", "bio", "skills", "capabilities", "goals", "avatar_symbol")},
+            "avatar_image": export_avatar_payload(),
         }
         path = EXPORT_DIR / f"personalization_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -163,6 +171,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             if data.get("format") not in {
                 "research-cultivation-personalization-v1",
                 "research-cultivation-personalization-v2",
+                "research-cultivation-personalization-v3",
             }:
                 raise ValueError("不是受支持的个性化包")
             theme = data.get("theme", {})
@@ -170,6 +179,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             for source, key, default in [
                 ("accent", "ui_accent", "terracotta"), ("density", "ui_density", "comfortable"),
                 ("scene", "ui_scene", "warm"), ("home_motto", "ui_home_motto", "让科研更好玩一点"),
+                ("home_poem", "ui_home_poem", "纸上得来终觉浅，绝知此事要躬行。——陆游"),
             ]:
                 set_setting(key, str(theme.get(source, default)))
             if isinstance(theme.get("realm_names"), list):
@@ -193,6 +203,8 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 queue_event(conn, "profile_updated", profile)
                 queue_event(conn, "personalization_updated", theme)
                 conn.commit()
+            if data.get("avatar_image"):
+                import_avatar_payload(data["avatar_image"])
             flash(request, "个性化包已导入。")
         except Exception as exc:
             flash(request, f"导入失败：{exc}", "error")

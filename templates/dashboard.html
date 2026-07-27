@@ -1,37 +1,103 @@
 {% extends "base.html" %}
-{% block title %}主页 · {{ site_name }}{% endblock %}
+{% block title %}山门 · {{ site_name }}{% endblock %}
 {% block content %}
-<section class="home-hero official-home">
-  <div class="home-copy">
-    <span class="eyebrow">今天只留下一件真实成果</span>
-    <h1>{{ researcher_name }}，<br>开始今日修炼。</h1>
-    <p>网站负责近期计划、真实交付和延迟复盘；需要解释与制定方案时，继续交给 AI。</p>
-    <div class="hero-actions"><a class="primary-button large-button" href="{{ url_for('daily_page') }}">进入每日任务</a><a class="soft-button large-button" href="{{ url_for('assistant_page') }}">带去问 AI</a></div>
+<section class="mountain-gate">
+  <div class="gate-sun"></div>
+  <div class="gate-mountain mountain-far"></div>
+  <div class="gate-mountain mountain-near"></div>
+  <div class="gate-mist mist-one"></div>
+  <div class="gate-mist mist-two"></div>
+
+  <div class="gate-copy">
+    <span class="gate-date">{{ today_label }} · {{ realm.name }}</span>
+    <blockquote>{{ ui_home_poem }}</blockquote>
+    <p>欢迎归山，{{ researcher_name }}。不必先面对整个系统，今天只从一扇门开始。</p>
+    <div class="gate-actions">
+      <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">开始今日修炼 <span>→</span></a>
+      <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整近期计划</a>
+    </div>
   </div>
-  <a class="home-game-card world-preview" href="{{ url_for('world_page') }}">
-    <span class="game-kicker">我的洞府</span><strong>{{ realm.name }}</strong><p>◆ {{ nav_assets.spirit_stone }} 灵石 · 点此进入</p><div class="game-progress"><i style="width:{{ realm.progress }}%"></i></div><small>建筑、法宝、灵草和丹药都由真实交付驱动</small>
+
+  <a class="gate-profile" href="{{ url_for('profile_page') }}">
+    <span class="gate-avatar">{% if avatar_file %}<img src="/media/profile/{{ avatar_file }}" alt="{{ researcher_name }}的头像">{% else %}{{ profile.avatar_symbol }}{% endif %}</span>
+    <span class="gate-profile-copy"><small>{{ profile.title or '科研修行者' }}</small><strong>{{ profile.display_name }}</strong><em>{{ xp }} 修为 · 连续 {{ streak }} 天</em></span>
+    <span class="gate-profile-arrow">↗</span>
   </a>
 </section>
 
-{% if active_plan %}
-<section class="today-preview panel">
-  <div class="panel-head simple"><div><span class="eyebrow">Day {{ active_plan.current_day }} / {{ active_plan.total_days }}</span><h2>今天的关卡</h2></div><span class="round-progress">{{ today_progress }}%</span></div>
-  <div class="mini-missions">{% for mission in today_missions[:4] %}<a href="{{ url_for('daily_page') }}" class="mini-mission {% if mission.completed %}done{% endif %}"><span>{{ '✓' if mission.completed else loop.index }}</span><div><strong>{{ mission.title }}</strong><small>{{ '已交付' if mission.completed else mission.deliverable or '需要成果证明' }}</small></div></a>{% endfor %}</div>
-</section>
-{% endif %}
+<form class="home-search" action="{{ url_for('search') }}" method="get">
+  <span class="home-search-mark">寻</span>
+  <input name="q" aria-label="检索知识库" placeholder="检索论文、笔记、实验、数据与代码……">
+  <button type="submit">搜尽藏书</button>
+</form>
 
-<section class="quick-grid official-quick-grid">
-  <a class="quick-card accent" href="{{ url_for('note_new') }}"><span>✎</span><div><strong>写笔记</strong><small>可直接粘贴图片</small></div></a>
-  <a class="quick-card" href="{{ url_for('review_page') }}"><span>忆</span><div><strong>复盘挑战</strong><small>答案先隐藏</small></div></a>
-  <a class="quick-card" href="{{ url_for('alchemy_page') }}"><span>丹</span><div><strong>炼丹炉</strong><small>特殊任务换灵草</small></div></a>
-  <a class="quick-card" href="{{ url_for('world_page') }}"><span>府</span><div><strong>进入洞府</strong><small>仙草、建筑与法宝</small></div></a>
-  <a class="quick-card" href="{{ url_for('upload') }}"><span>↑</span><div><strong>收录资料</strong><small>论文、数据与代码</small></div></a>
-  <a class="quick-card" href="{{ url_for('profile_page') }}"><span>我</span><div><strong>个人主页</strong><small>展示会什么、能做到什么</small></div></a>
+<section class="home-portal-grid" aria-label="核心入口">
+  <article class="portal-card portal-cultivate">
+    <div class="portal-mark">始</div>
+    <div class="portal-copy">
+      <span>每日行动</span>
+      <h2>开始修炼</h2>
+      {% if active_plan %}
+      <p>近期计划「{{ active_plan.name }}」· 第 {{ active_plan.current_day }} 日</p>
+      <div class="portal-progress"><i style="width:{{ today_progress }}%"></i></div>
+      {% set next_mission = today_missions|rejectattr('completed')|first %}
+      <small>{{ next_mission.title if next_mission else '今日任务均已交付，可以开启下一关。' }}</small>
+      {% else %}
+      <p>先导入一份可以随时改变的近期计划。</p>
+      <small>不设长期主线，不制造任务债务。</small>
+      {% endif %}
+    </div>
+    <a class="portal-link" href="{{ url_for('daily_page') }}">进入 <span>→</span></a>
+  </article>
+
+  <article class="portal-card portal-review">
+    <div class="portal-mark">温</div>
+    <div class="portal-copy">
+      <span>主动提取</span>
+      <h2>温故而知新</h2>
+      {% if pending_review %}
+      <p>{{ pending_review.source_date }} 的 {{ pending_review.source_count }} 份交付等待复盘。</p>
+      <small>问题只来自你亲手留下的复盘关键文本。</small>
+      {% else %}
+      <p>从自己的交付中抽题，答案与证据默认隐藏。</p>
+      <small>妖兽挑战与雷劫也从这里取材。</small>
+      {% endif %}
+    </div>
+    <a class="portal-link" href="{{ url_for('review_page') }}">复习 <span>→</span></a>
+  </article>
+
+  <article class="portal-card portal-retreat">
+    <div class="portal-mark">静</div>
+    <div class="portal-copy">
+      <span>专注时段</span>
+      <h2>入定闭关</h2>
+      <p>25、45、90 分钟或自定义倒计时。</p>
+      <small>刷新或切换页面后，剩余时间仍会继续。</small>
+    </div>
+    <a class="portal-link" href="{{ url_for('retreat_page') }}">闭关 <span>→</span></a>
+  </article>
+
+  <article class="portal-card portal-knowledge">
+    <div class="portal-mark">藏</div>
+    <div class="portal-copy">
+      <span>个人资产</span>
+      <h2>我的知识库</h2>
+      <p>{{ stats.total }} 条知识 · {{ stats.documents }} 份文献 · {{ stats.datasets }} 个数据集</p>
+      <small>Markdown、JSON 与原附件可一键带走。</small>
+    </div>
+    <div class="portal-actions">
+      <a class="portal-link" href="{{ url_for('library') }}">进入 <span>→</span></a>
+      <a class="portal-sub-link" href="{{ url_for('knowledge_export') }}">一键导出</a>
+    </div>
+  </article>
 </section>
 
-<section class="home-lower-grid">
-  <div class="panel compact-panel"><div class="panel-head simple"><div><span class="eyebrow">最近保存</span><h2>科研痕迹</h2></div><a href="{{ url_for('library') }}">全部</a></div>{% if recent %}<div class="asset-list compact-list">{% for entry in recent[:5] %}<a class="asset-row" href="{{ url_for('entry_view', entry_id=entry.id) }}"><span class="asset-icon">{{ entry.kind_icon }}</span><span class="asset-main"><strong>{{ entry.title }}</strong><small>{{ entry.domain }} · {{ entry.updated_at|datecn }}</small></span><span class="arrow">›</span></a>{% endfor %}</div>{% else %}<div class="empty-compact">完成第一项交付后，科研痕迹会在这里出现。</div>{% endif %}</div>
-  <details class="panel compact-panel daily-chest"><summary><span class="chest-icon">🥚</span><h2>隐藏线索</h2></summary><p>洞府里有一处看似普通的地方可以点击。第一批灵石也许就藏在那里。</p><a class="soft-button" href="{{ url_for('world_page') }}">去找找看</a></details>
+<section class="home-quiet-tools" aria-label="快捷工具">
+  <span>随手留下科研痕迹</span>
+  <a href="{{ url_for('note_new') }}">写一则笔记</a>
+  <a href="{{ url_for('upload') }}">收录一份资料</a>
+  <a href="{{ url_for('assistant_page') }}">与 AI 协作</a>
+  <button type="button" data-open-menu>展开全部菜单</button>
 </section>
 
 {% if pending_review %}
@@ -42,7 +108,7 @@
     <h2 id="review-modal-title">{{ pending_review.source_date }} 的交付，到了提取时间</h2>
     <p>系统找到 {{ pending_review.source_count }} 份复盘关键文本。问题只根据这些交付生成，参考证据会在回答后显示。</p>
     <div class="review-modal-actions">
-      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始3分钟复盘</button></form>
+      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始 3 分钟复盘</button></form>
       <form method="post" action="{{ url_for('review_snooze') }}"><button class="text-button">今天先不弹</button></form>
     </div>
   </section>

@@ -18,6 +18,7 @@ storage/*
 !storage/hub_backups/
 !storage/hub_releases/
 !storage/note_images/
+!storage/profile/
 !storage/research_foundation/
 !storage/simulations/
 !storage/sync_exports/

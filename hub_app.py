@@ -44,7 +44,7 @@ from services.game_world import ARTIFACTS, BUILDINGS
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
-VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "1.2.0"
+VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "1.3.0"
 
 app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"
@@ -208,6 +208,7 @@ def parse_theme(value: str | dict[str, Any]) -> dict[str, Any]:
         "density": data.get("density", "comfortable"),
         "scene": data.get("scene", "warm"),
         "home_motto": str(data.get("home_motto", "让科研更好玩一点"))[:80],
+        "home_poem": str(data.get("home_poem", "纸上得来终觉浅，绝知此事要躬行。——陆游"))[:120],
         "site_name": str(data.get("site_name", "问道科研"))[:60],
         "review_popup": "1" if str(data.get("review_popup", "1")) == "1" else "0",
     }
@@ -218,7 +219,7 @@ def parse_theme(value: str | dict[str, Any]) -> dict[str, Any]:
         else []
     )
     nav_keys = {
-        "dashboard", "daily", "review", "plans", "alchemy", "world", "profile",
+        "dashboard", "daily", "review", "plans", "retreat", "alchemy", "world", "profile",
         "assistant", "online", "library", "folders", "note_new", "upload",
         "search", "discover", "datasets", "experiments", "simulations",
         "cultivation", "settings",
@@ -617,7 +618,7 @@ def profile_save(
 
 
 @app.post("/me/theme", name="hub_theme_save")
-def theme_save(request: Request, accent: str = Form("terracotta"), density: str = Form("comfortable"), scene: str = Form("warm"), home_motto: str = Form(""), csrf_value: str = Form(..., alias="_csrf")):
+def theme_save(request: Request, accent: str = Form("terracotta"), density: str = Form("comfortable"), scene: str = Form("warm"), home_motto: str = Form(""), home_poem: str = Form(""), csrf_value: str = Form(..., alias="_csrf")):
     user = require_user(request)
     verify_csrf(request, csrf_value)
     with hub_transaction() as conn:
@@ -626,7 +627,7 @@ def theme_save(request: Request, accent: str = Form("terracotta"), density: str 
             existing = json.loads(row["theme_json"] or "{}") if row else {}
         except json.JSONDecodeError:
             existing = {}
-        existing.update({"accent":accent,"density":density,"scene":scene,"home_motto":home_motto})
+        existing.update({"accent":accent,"density":density,"scene":scene,"home_motto":home_motto,"home_poem":home_poem})
         theme = parse_theme(existing)
         conn.execute("UPDATE hub_profiles SET theme_json=?,revision=revision+1,updated_at=? WHERE user_id=?", (json.dumps(theme,ensure_ascii=False),now_iso(),user["id"]))
         audit(conn, int(user["id"]), "theme_update", json.dumps(theme,ensure_ascii=False), request)

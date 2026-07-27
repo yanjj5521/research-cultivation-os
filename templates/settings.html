@@ -22,13 +22,15 @@
     <small class="form-help">系统只使用交付文件夹里的“复盘关键文本.txt”，不会悄悄扫描你的全部论文和私人资料。</small>
     <div class="settings-divider"></div>
     <div><span class="eyebrow">Personalization</span><h2>境界与导航名称</h2></div>
+    <label><span>山门古诗</span><input name="home_poem" maxlength="120" value="{{ home_poem }}"></label>
     <label><span>境界名称（按等级顺序，每行一个，共14行）</span><textarea name="realm_names" rows="14">{{ realm_names_text }}</textarea></label>
-    <label><span>导航名称（只修改等号右边）</span><textarea name="nav_labels" rows="18">{{ nav_labels_text }}</textarea></label>
+    <label><span>导航名称（只修改等号右边）</span><textarea name="nav_labels" rows="19">{{ nav_labels_text }}</textarea></label>
     <small class="form-help">这些名称会进入可迁移个性化包。程序路由和科研数据字段保持稳定，因此以后升级不会因改名而丢数据。</small>
     <button class="primary-button">保存设置</button>
   </form>
   <section class="panel backup-panel">
     <div class="panel-head"><div><span class="eyebrow">Backup</span><h2>数据安全</h2></div></div>
+    <div class="backup-card featured-backup"><span>📚</span><div><h3>一键导出知识库</h3><p>生成可直接阅读的 Markdown、结构化 JSON 与原附件，不混入游戏资产、密钥或程序。</p><a class="primary-button" href="{{ url_for('knowledge_export') }}">导出我的知识库</a></div></div>
     <div class="backup-card"><span>🗄️</span><div><h3>完整备份</h3><p>打包 SQLite 数据库和全部上传文件，适合迁移到移动硬盘或另一台电脑。</p><a class="primary-button" href="{{ url_for('backup') }}">下载完整 ZIP</a></div></div>
     <div class="backup-card"><span>🧾</span><div><h3>元数据导出</h3><p>将条目、活动和任务导出为 JSON，便于以后写脚本、做统计或迁移。</p><a class="ghost-button" href="{{ url_for('export_json') }}">导出 JSON</a></div></div>
     <div class="backup-card"><span>📦</span><div><h3>整套便携迁移包</h3><p>版本 {{portable_version}} 会打包程序、数据库和全部资料，但自动排除不可迁移的虚拟环境。到新电脑解压后双击启动即可。</p><a class="primary-button" href="{{url_for('portable_export')}}">生成便携 ZIP</a></div></div>

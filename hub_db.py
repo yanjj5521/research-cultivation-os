@@ -109,7 +109,7 @@ def create_user(
             "",
             "",
             "道",
-            json.dumps({"accent": "terracotta", "density": "comfortable", "scene": "warm", "home_motto": "让科研更好玩一点"}, ensure_ascii=False),
+            json.dumps({"accent": "terracotta", "density": "comfortable", "scene": "warm", "home_motto": "让科研更好玩一点", "home_poem": "纸上得来终觉浅，绝知此事要躬行。——陆游"}, ensure_ascii=False),
             ts,
         ),
     )
@@ -278,7 +278,7 @@ def init_hub_db() -> None:
         )
         defaults = {
             "site_name": "问道科研 · 同行会",
-            "version": "1.2.0",
+            "version": "1.3.0",
             "registration_mode": "invite",
             "max_members": "10",
         }
@@ -289,7 +289,7 @@ def init_hub_db() -> None:
             password = secrets.token_urlsafe(10)
             user_id, token = create_user(conn, "admin", password, "洞府主人", role="admin")
             HUB_ADMIN_PATH.write_text(
-                "问道科研 v1.2 联机中心管理员凭据\n"
+                "问道科研 v1.3 联机中心管理员凭据\n"
                 "================================\n"
                 f"用户名: admin\n密码: {password}\nAPI Token: {token}\n\n"
                 "首次登录后请立即修改密码，并妥善保管此文件。\n",

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
+import zipfile
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 import app
 from db import connect, get_setting, now_iso, set_setting
@@ -16,7 +19,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v1.2 loop.
+    """Exercise the complete v1.3 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -75,6 +78,22 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     if not delivery or not source:
         failures.append("delivery did not create a review source")
         return
+
+    _check_response(
+        failures,
+        "knowledge attachment upload",
+        client.post(
+            "/upload",
+            data={
+                "title": "自检知识条目",
+                "kind": "note",
+                "domain": "电化学",
+                "tags": "证据,自检",
+                "summary": "用于验证 Markdown、JSON 与附件的一键导出。",
+            },
+            files={"files": ("evidence.txt", b"evidence-backed research note", "text/plain")},
+        ),
+    )
 
     dashboard = client.get("/")
     _check_response(failures, "pending review dashboard", dashboard)
@@ -214,6 +233,25 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     if saved_nav.get("dashboard") != "科研台" or saved_nav.get("alchemy") != "实验炼丹房":
         failures.append("navigation personalization was not saved")
 
+    avatar_buffer = io.BytesIO()
+    Image.new("RGB", (96, 96), "#8b654d").save(avatar_buffer, format="PNG")
+    _check_response(
+        failures,
+        "avatar upload",
+        client.post(
+            "/profile/avatar",
+            data={
+                "avatar_action": "upload",
+                "avatar_choice": "研",
+                "avatar_custom": "",
+            },
+            files={"avatar": ("avatar.png", avatar_buffer.getvalue(), "image/png")},
+        ),
+    )
+    avatar_file = get_setting("avatar_file", "")
+    if not avatar_file or not (app.PROFILE_DIR / avatar_file).is_file():
+        failures.append("avatar upload did not create a portable profile image")
+
     package_response = client.get("/online/personalization/export")
     _check_response(failures, "personalization export", package_response)
     try:
@@ -221,8 +259,10 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v2":
-        failures.append("personalization export did not use the v2 format")
+    if package.get("format") != "research-cultivation-personalization-v3":
+        failures.append("personalization export did not use the v3 format")
+    if not package.get("avatar_image", {}).get("data_base64"):
+        failures.append("personalization export did not include the uploaded avatar")
     if "hub_api_token" in json.dumps(package, ensure_ascii=False):
         failures.append("personalization export leaked the hub token field")
     set_setting("site_name", "临时改名")
@@ -243,18 +283,39 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     if get_setting("site_name") != "自检科研系统":
         failures.append("personalization import did not restore the site name")
 
+    portable_knowledge = client.get("/knowledge/export")
+    _check_response(failures, "portable knowledge export", portable_knowledge)
+    try:
+        with zipfile.ZipFile(io.BytesIO(portable_knowledge.content)) as archive:
+            names = archive.namelist()
+        if not any(name.startswith("entries/") and name.endswith(".md") for name in names):
+            failures.append("knowledge export did not create Markdown entries")
+        if not any(name.startswith("attachments/") for name in names):
+            failures.append("knowledge export did not include original attachments")
+    except zipfile.BadZipFile:
+        failures.append("portable knowledge export was not a valid ZIP")
+
 
 def main() -> None:
     integration = "--integration" in sys.argv
     client = TestClient(app.app)
     pages = [
-        "/", "/daily", "/review", "/alchemy", "/world", "/profile", "/plans",
+        "/", "/daily", "/review", "/retreat", "/alchemy", "/world", "/profile", "/plans",
         "/foundation", "/assistant", "/notes/new", "/library", "/settings", "/online",
     ]
     failures = []
     for page in pages:
         response = client.get(page)
         _check_response(failures, page, response)
+    knowledge_export = client.get("/knowledge/export")
+    _check_response(failures, "knowledge export", knowledge_export)
+    try:
+        with zipfile.ZipFile(io.BytesIO(knowledge_export.content)) as archive:
+            names = set(archive.namelist())
+        if not {"README.md", "manifest.json", "knowledge.json"}.issubset(names):
+            failures.append("knowledge export missed its portable index files")
+    except zipfile.BadZipFile:
+        failures.append("knowledge export was not a valid ZIP")
     with connect() as conn:
         required_tables = {
             "mission_deliveries", "mission_delivery_files", "asset_transactions", "inventory_items",
@@ -281,7 +342,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v1.2 tables, daily plan, online queue and local database are ready.")
+        print("Core pages, v1.3 tables, knowledge export, retreat, online queue and local database are ready.")
 
 
 if __name__ == "__main__":

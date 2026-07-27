@@ -1,14 +1,16 @@
-# 问道科研 v1.2 架构
+# 问道科研 v1.3 架构
 
 ## 1. 设计目标
 
-v1.2 优先解决五件事：
+v1.3 在 v1.2 科研闭环之上优先解决七件事：
 
 1. 计划可以随科研状态随时变化；
 2. 每次学习必须留下可检查交付；
 3. 复盘只能基于本人交付的受控关键文本；
 4. 游戏系统必须映射真实科研能力，不另造一套空转数据；
 5. 版本升级不能破坏科研资料和个性化。
+6. 首页只显示少量高频入口，完整菜单按需展开；
+7. 知识资产可以脱离本软件，以 Markdown、JSON 和原附件一键导出。
 
 旧版 `research_tracks` 与 `research_plan_items` 继续保留在数据库中，只作为兼容数据，不再出现在主导航。`/foundation` 会转到近期计划，避免升级时直接删除用户旧数据。
 
@@ -161,10 +163,11 @@ RESEARCH_OS_AI_KEY
 
 ## 8. 个性化与跨版本迁移
 
-个性化 v2 包包含：
+个性化 v3 包包含：
 
 - 个人主页；
-- 主题与主页短句；
+- 字印头像或压缩后的头像图片；
+- 主题、主页短句与山门古诗；
 - 网站名称；
 - 14 个境界名称；
 - 导航名称；
@@ -177,9 +180,35 @@ RESEARCH_OS_AI_KEY
 - API 密钥；
 - 联机 Token。
 
-导入同时兼容 `research-cultivation-personalization-v1` 与 `v2`。
+导入同时兼容 `research-cultivation-personalization-v1`、`v2` 与 `v3`。安全升级会迁移 `storage/profile/`，因此头像不会因版本更新丢失。
 
-## 9. 数据安全
+## 9. 山门首页、检索与闭关
+
+- 首页默认隐藏侧边栏，只提供开始修炼、温故知新、入定闭关和知识库四个入口；
+- 完整导航仍保留在抽屉内，科研功能没有被删除；
+- 搜索继续使用 SQLite FTS5，中文无结果时回退到多关键词模糊匹配；
+- 闭关页只把结束时间、剩余时间、目标和预设保存在浏览器 `localStorage`；
+- 倒计时每次按 `Date.now()` 计算，不依赖后台标签页中的计时回调准时执行；
+- 动效遵守 `prefers-reduced-motion`，系统要求减少动态时会自动关闭装饰动画。
+
+## 10. 开放格式知识库导出
+
+`/knowledge/export` 生成：
+
+```text
+README.md
+manifest.json
+knowledge.json
+entries/*.md
+attachments/*
+records/experiments.json
+records/simulations.json
+records/review_sources.json
+```
+
+该导出用于阅读、二次分析和迁往其他知识管理工具，不承担整套系统恢复。数据库、交付目录和个性化的完整恢复继续由完整备份负责。
+
+## 11. 数据安全
 
 - SQLite：WAL、外键、忙等待；
 - 自动快照：Python `sqlite3.Connection.backup()`；
@@ -187,7 +216,7 @@ RESEARCH_OS_AI_KEY
 - 安全升级：校验 ZIP 路径、安装到新目录、迁移数据、保留旧目录；
 - 公开仓库：忽略数据库、附件、`.env`、Token、密钥与生成包。
 
-## 10. 后续扩展边界
+## 12. 后续扩展边界
 
 建议下一阶段优先做：
 

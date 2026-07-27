@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 USER_STORAGE_NAMES = (
-    "uploads", "simulations", "research_foundation", "deliveries", "note_images", "sync_exports",
+    "uploads", "simulations", "research_foundation", "deliveries", "note_images", "profile", "sync_exports",
     "hub_backups", "hub_releases",
 )
 INSTANCE_NAMES = (

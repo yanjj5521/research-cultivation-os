@@ -31,7 +31,7 @@ def _request_json(method: str, url: str, token: str, body: dict[str, Any] | None
         url,
         data=data,
         method=method,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.2"},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.3"},
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
@@ -100,6 +100,7 @@ def apply_state(conn, state: dict[str, Any]) -> None:
         "density": "ui_density",
         "scene": "ui_scene",
         "home_motto": "ui_home_motto",
+        "home_poem": "ui_home_poem",
         "site_name": "site_name",
         "review_popup": "review_popup",
     }

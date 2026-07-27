@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from db import connect, now_iso, total_xp
 from services.economy import ASSETS, balance, balances, transact
 from services.game_world import ARTIFACTS, BUILDINGS, building_cost, building_level, inventory_map
 from services.online_sync import best_effort_sync, queue_event
+from services.profile_media import (
+    MAX_AVATAR_BYTES,
+    current_avatar_filename,
+    remove_avatar,
+    save_avatar_bytes,
+)
 
 
 def register_game_routes(
@@ -195,6 +201,7 @@ def register_game_routes(
             }
         profile["skills_list"] = [x.strip() for x in profile["skills"].splitlines() if x.strip()]
         profile["capabilities_list"] = [x.strip() for x in profile["capabilities"].splitlines() if x.strip()]
+        profile["avatar_file"] = current_avatar_filename()
         return templates.TemplateResponse(
             request=request, name="profile.html",
             context=context(request, "profile", profile=profile, wallet=wallet, xp=xp, realm=realm,
@@ -227,5 +234,41 @@ def register_game_routes(
         best_effort_sync()
         flash(request, "个人主页已更新。", "success")
         return RedirectResponse(request.url_for("profile_page"), status_code=303)
+
+    @router.post("/profile/avatar", name="profile_avatar_save")
+    async def profile_avatar_save(
+        request: Request,
+        avatar_action: str = Form("symbol"),
+        avatar_choice: str = Form("道"),
+        avatar_custom: str = Form(""),
+        avatar: UploadFile | None = File(default=None),
+    ):
+        symbol = (avatar_custom.strip() or avatar_choice.strip() or "道")[:2]
+        try:
+            if avatar_action == "upload":
+                if not avatar or not avatar.filename:
+                    raise ValueError("请先选择一张头像图片。")
+                data = await avatar.read(MAX_AVATAR_BYTES + 1)
+                save_avatar_bytes(data)
+            elif avatar_action == "symbol":
+                remove_avatar()
+            else:
+                raise ValueError("无法识别头像操作。")
+            with connect() as conn:
+                conn.execute(
+                    "UPDATE player_profile SET avatar_symbol=?,updated_at=? WHERE id=1",
+                    (symbol, now_iso()),
+                )
+                queue_event(conn, "profile_updated", {"avatar_symbol": symbol})
+                conn.commit()
+            best_effort_sync()
+            message = "头像图片已更新。" if avatar_action == "upload" else "已改用字印头像。"
+            flash(request, message, "success")
+        except ValueError as exc:
+            flash(request, str(exc), "error")
+        return RedirectResponse(
+            str(request.url_for("profile_page")) + "?edit=1",
+            status_code=303,
+        )
 
     app.include_router(router)

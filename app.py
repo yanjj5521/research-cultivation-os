@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 import mimetypes
@@ -31,6 +32,7 @@ from research_tools import find_lammps_files, offline_paper_summary, parse_lammp
 from services.economy import balances as asset_balances
 from services.backups import register_backup_jobs
 from services.ai_provider import provider_status
+from services.profile_media import PROFILE_DIR, current_avatar_filename
 from services.review_engine import pending_review_group
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -91,16 +93,17 @@ DEFAULT_NAV_LABELS = {
     "daily": "每日任务",
     "review": "昨日复盘",
     "plans": "近期计划",
+    "retreat": "闭关计时",
     "alchemy": "炼丹炉",
     "world": "我的洞府",
     "profile": "个人主页",
     "assistant": "AI 协作",
     "online": "联机同步",
-    "library": "资料库",
+    "library": "知识库",
     "folders": "交付文件夹",
     "note_new": "写笔记",
     "upload": "上传资料",
-    "search": "本地检索",
+    "search": "全库检索",
     "discover": "联网找论文",
     "datasets": "数据集",
     "experiments": "EG 实验",
@@ -118,6 +121,7 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.mount("/media/note-images", StaticFiles(directory=NOTE_IMAGE_DIR), name="note_images")
+app.mount("/media/profile", StaticFiles(directory=PROFILE_DIR), name="profile_media")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -302,6 +306,9 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
     xp = total_xp()
     with connect() as _asset_conn:
         _balances = asset_balances(_asset_conn)
+        _profile = _asset_conn.execute(
+            "SELECT avatar_symbol FROM player_profile WHERE id=1"
+        ).fetchone()
     base = {
         "request": request,
         "site_name": get_setting("site_name", "问道科研"),
@@ -318,7 +325,13 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "ui_density": get_setting("ui_density", "comfortable"),
         "ui_scene": get_setting("ui_scene", "warm"),
         "ui_home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
+        "ui_home_poem": get_setting(
+            "ui_home_poem",
+            "纸上得来终觉浅，绝知此事要躬行。——陆游",
+        ),
         "nav_labels": navigation_labels(),
+        "nav_avatar_symbol": (_profile["avatar_symbol"] if _profile else "道") or "道",
+        "avatar_file": current_avatar_filename(),
         "hub_configured": bool(get_setting("hub_url", "").strip() and get_setting("hub_api_token", "").strip()),
     }
     base.update(extra)
@@ -344,6 +357,7 @@ def dashboard(request: Request):
             "SELECT a.*, e.title AS entry_title FROM activities a LEFT JOIN entries e ON e.id=a.entry_id ORDER BY a.created_at DESC LIMIT 12"
         ).fetchall()
         quests = conn.execute("SELECT * FROM quests ORDER BY completed ASC, created_at DESC LIMIT 8").fetchall()
+        profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
         active_plan = conn.execute("SELECT * FROM study_plans WHERE status='active' ORDER BY updated_at DESC LIMIT 1").fetchone()
         today_missions = []
         today_progress = 0
@@ -386,8 +400,19 @@ def dashboard(request: Request):
             today_missions=today_missions,
             today_progress=today_progress,
             pending_review=pending_review_group(conn) if get_setting("review_popup", "1") == "1" else None,
+            profile=profile,
+            today_label=datetime.now().strftime("%Y年%m月%d日"),
         )
     return templates.TemplateResponse(request=request, name="dashboard.html", context=data)
+
+
+@app.get("/retreat", response_class=HTMLResponse, name="retreat_page")
+def retreat_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="retreat.html",
+        context=context(request, "retreat"),
+    )
 
 
 @app.get("/library", response_class=HTMLResponse, name="library")
@@ -872,7 +897,11 @@ def settings_get(request: Request):
             realm_names_text="\n".join(configured_realm_names()),
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
-            portable_version=get_setting("portable_version", "1.2.0"),
+            home_poem=get_setting(
+                "ui_home_poem",
+                "纸上得来终觉浅，绝知此事要躬行。——陆游",
+            ),
+            portable_version=get_setting("portable_version", "1.3.0"),
         ),
     )
 
@@ -889,6 +918,7 @@ def settings_post(
     realm_names: str = Form(""),
     nav_labels: str = Form(""),
     review_popup: str = Form(""),
+    home_poem: str = Form(""),
 ):
     domain_list = [x.strip() for x in domains_text.splitlines() if x.strip()]
     if "未分类" not in domain_list:
@@ -915,6 +945,10 @@ def settings_post(
             parsed_nav[key] = value[:24]
     set_setting("nav_labels", json.dumps(parsed_nav, ensure_ascii=False))
     set_setting("review_popup", "1" if review_popup == "1" else "0")
+    set_setting(
+        "ui_home_poem",
+        home_poem.strip()[:120] or "纸上得来终觉浅，绝知此事要躬行。——陆游",
+    )
     flash(request, "设置已保存。")
     return redirect("settings_page", request)
 
@@ -961,6 +995,158 @@ def export_json(request: Request):
     return FileResponse(path, media_type="application/json", filename=path.name)
 
 
+def _plain_export_text(value: str, content_format: str = "plain") -> str:
+    text = value or ""
+    if content_format == "rich":
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"</(?:p|div|li|h[1-6]|blockquote|pre)>",
+            "\n",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = bleach.clean(text, tags=[], strip=True)
+        text = html.unescape(text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _entry_markdown(entry: dict[str, Any], attachment: str = "") -> str:
+    def one_line(value: Any) -> str:
+        return str(value or "").replace("\r", " ").replace("\n", " ").strip()
+
+    kind_label = KINDS.get(entry.get("kind", ""), KINDS["other"])[0]
+    parts = [
+        f"# {one_line(entry.get('title')) or '未命名条目'}",
+        "",
+        f"- 类型：{kind_label}",
+        f"- 领域：{one_line(entry.get('domain')) or '未分类'}",
+        f"- 标签：{one_line(entry.get('tags')) or '无'}",
+        f"- 来源：{one_line(entry.get('source')) or '未填写'}",
+        f"- 创建：{one_line(entry.get('created_at'))}",
+        f"- 更新：{one_line(entry.get('updated_at'))}",
+    ]
+    if attachment:
+        parts.append(
+            f"- 原始附件：[{one_line(entry.get('original_name')) or '打开附件'}](../{attachment})"
+        )
+    summary = _plain_export_text(str(entry.get("summary", "")))
+    content = _plain_export_text(
+        str(entry.get("content", "")),
+        str(entry.get("content_format", "plain")),
+    )
+    if summary:
+        parts.extend(["", "## 摘要", "", summary])
+    if content:
+        parts.extend(["", "## 正文", "", content])
+    if not summary and not content:
+        parts.extend(["", "> 该条目暂时没有可导出的文本，原始附件仍会随包保存。"])
+    return "\n".join(parts).strip() + "\n"
+
+
+@app.get("/knowledge/export", name="knowledge_export")
+def knowledge_export():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive = BACKUP_DIR / f"我的科研知识库_{timestamp}.zip"
+    with connect() as conn:
+        entries = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM entries WHERE status='active' ORDER BY domain,kind,updated_at DESC,id"
+            )
+        ]
+        experiments = [
+            dict(row)
+            for row in conn.execute("SELECT * FROM experiments ORDER BY experiment_date DESC,id")
+        ]
+        simulations = [
+            dict(row)
+            for row in conn.execute("SELECT * FROM simulations ORDER BY updated_at DESC,id")
+        ]
+        review_sources = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT id,source_type,title,source_text,source_date,created_at "
+                "FROM review_sources ORDER BY source_date DESC,id"
+            )
+        ]
+    exported_at = now_iso()
+    manifest = {
+        "format": "research-cultivation-knowledge-v1",
+        "exported_at": exported_at,
+        "counts": {
+            "entries": len(entries),
+            "experiments": len(experiments),
+            "simulations": len(simulations),
+            "review_sources": len(review_sources),
+        },
+    }
+    readme = f"""# 我的科研知识库
+
+导出时间：{exported_at}
+
+这个压缩包采用开放、可直接阅读的格式：
+
+- `entries/`：每条知识记录一份 Markdown；
+- `attachments/`：知识条目的原始附件；
+- `knowledge.json`：完整结构化索引，便于以后用 Python、Excel 或其他软件处理；
+- `records/`：实验、模拟和复盘关键文本索引；
+- `manifest.json`：格式版本与数量校验。
+
+本包不包含灵石、游戏资产、API 密钥、联机 Token 或软件程序。需要完整恢复整个系统时，请在网站“设置与备份”中下载完整备份。
+"""
+    structured_entries: list[dict[str, Any]] = []
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        zf.writestr("README.md", readme)
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        for entry in entries:
+            attachment_rel = ""
+            stored_name = Path(str(entry.get("file_path", ""))).name
+            source = UPLOAD_DIR / stored_name if stored_name else None
+            if source and source.is_file() and source.parent.resolve() == UPLOAD_DIR.resolve():
+                attachment_name = (
+                    f"{int(entry['id']):06d}_{secure_filename(str(entry.get('original_name') or source.name))}"
+                )
+                attachment_rel = (Path("attachments") / attachment_name).as_posix()
+                zf.write(source, attachment_rel)
+            markdown_name = (
+                f"{int(entry['id']):06d}_{secure_filename(str(entry.get('title') or '未命名'))}.md"
+            )
+            zf.writestr(
+                (Path("entries") / markdown_name).as_posix(),
+                _entry_markdown(entry, attachment_rel),
+            )
+            item = dict(entry)
+            item["attachment"] = attachment_rel
+            structured_entries.append(item)
+        zf.writestr(
+            "knowledge.json",
+            json.dumps(
+                {
+                    "format": manifest["format"],
+                    "exported_at": exported_at,
+                    "entries": structured_entries,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        zf.writestr(
+            "records/experiments.json",
+            json.dumps(experiments, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/simulations.json",
+            json.dumps(simulations, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/review_sources.json",
+            json.dumps(review_sources, ensure_ascii=False, indent=2),
+        )
+    log_activity("knowledge_export", 0, f"导出科研知识库：{len(entries)} 条知识记录")
+    return FileResponse(archive, media_type="application/zip", filename=archive.name)
+
+
 @app.get("/backup", name="backup")
 def backup(request: Request):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -976,13 +1162,13 @@ def backup(request: Request):
             source_conn.close()
     storage_stage = stage / "storage"
     storage_stage.mkdir(exist_ok=True)
-    for name, source in (("uploads", UPLOAD_DIR), ("simulations", SIMULATION_DIR), ("research_foundation", FOUNDATION_DIR), ("deliveries", DELIVERY_DIR), ("note_images", NOTE_IMAGE_DIR)):
+    for name, source in (("uploads", UPLOAD_DIR), ("simulations", SIMULATION_DIR), ("research_foundation", FOUNDATION_DIR), ("deliveries", DELIVERY_DIR), ("note_images", NOTE_IMAGE_DIR), ("profile", PROFILE_DIR)):
         target = storage_stage / name
         if source.exists():
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "1.2.0"), "created_at": now_iso(), "database": DB_PATH.name}
+    manifest = {"version": get_setting("portable_version", "1.3.0"), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1304,7 +1490,7 @@ def portable_export():
                 zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "1.2.0"),
+                "version": get_setting("portable_version", "1.3.0"),
                 "created_at": now_iso(),
                 "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
             }
@@ -1429,7 +1615,7 @@ def _parse_foundation_text(text: str) -> list[dict[str, Any]]:
 
 @app.get("/foundation", response_class=HTMLResponse, name="foundation_page")
 def foundation_page(request: Request, edit_track: int | None = None):
-    # v1.2 removes the long-term "main line" from the user experience. The
+    # v1.2+ removes the long-term "main line" from the user experience. The
     # legacy tables and endpoints remain readable during migration so an
     # upgrade never destroys older data.
     return RedirectResponse(request.url_for("plans_page"), status_code=303)

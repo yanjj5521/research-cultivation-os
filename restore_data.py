@@ -30,6 +30,7 @@ def main() -> None:
         shutil.copytree(STORAGE / "research_foundation", safety / "research_foundation", dirs_exist_ok=True) if (STORAGE / "research_foundation").exists() else None
         shutil.copytree(STORAGE / "deliveries", safety / "deliveries", dirs_exist_ok=True) if (STORAGE / "deliveries").exists() else None
         shutil.copytree(STORAGE / "note_images", safety / "note_images", dirs_exist_ok=True) if (STORAGE / "note_images").exists() else None
+        shutil.copytree(STORAGE / "profile", safety / "profile", dirs_exist_ok=True) if (STORAGE / "profile").exists() else None
     try:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
@@ -50,7 +51,7 @@ def main() -> None:
             storage_candidates = [p for p in target.rglob("storage") if p.is_dir()]
             if storage_candidates:
                 source_storage = storage_candidates[0]
-                for name in ("uploads", "simulations", "research_foundation", "deliveries", "note_images"):
+                for name in ("uploads", "simulations", "research_foundation", "deliveries", "note_images", "profile"):
                     source = source_storage / name
                     if source.exists():
                         shutil.copytree(source, STORAGE / name, dirs_exist_ok=True)

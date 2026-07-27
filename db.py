@@ -525,7 +525,7 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "1.2.0",
+            "portable_version": "1.3.0",
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
@@ -534,6 +534,8 @@ def init_db() -> None:
             "ui_density": "comfortable",
             "ui_scene": "warm",
             "ui_home_motto": "让科研更好玩一点",
+            "ui_home_poem": "纸上得来终觉浅，绝知此事要躬行。——陆游",
+            "avatar_file": "",
             "review_popup": "1",
             "realm_names": json.dumps(
                 [
@@ -545,10 +547,10 @@ def init_db() -> None:
             "nav_labels": json.dumps(
                 {
                     "dashboard": "主页", "daily": "每日任务", "review": "昨日复盘",
-                    "plans": "近期计划", "alchemy": "炼丹炉", "world": "我的洞府",
+                    "plans": "近期计划", "retreat": "闭关计时", "alchemy": "炼丹炉", "world": "我的洞府",
                     "profile": "个人主页", "assistant": "AI 协作", "online": "联机同步",
-                    "library": "资料库", "folders": "交付文件夹", "note_new": "写笔记",
-                    "upload": "上传资料", "search": "本地检索", "discover": "联网找论文",
+                    "library": "知识库", "folders": "交付文件夹", "note_new": "写笔记",
+                    "upload": "上传资料", "search": "全库检索", "discover": "联网找论文",
                     "datasets": "数据集", "experiments": "EG 实验", "simulations": "LAMMPS",
                     "cultivation": "修炼记录", "settings": "设置与备份",
                 },
@@ -557,7 +559,7 @@ def init_db() -> None:
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
-        conn.execute("UPDATE settings SET value='1.2.0' WHERE key='portable_version'")
+        conn.execute("UPDATE settings SET value='1.3.0' WHERE key='portable_version'")
         ts = now_iso()
         conn.execute(
             "INSERT OR IGNORE INTO player_profile(id,display_name,title,bio,skills,capabilities,goals,avatar_symbol,updated_at) VALUES (1,?,?,?,?,?,?,?,?)",
@@ -579,7 +581,7 @@ def init_db() -> None:
             ("first_delivery", "第一枚玉简", "你第一次用真实交付证明：今天不是只看懂了，而是留下了可复用的痕迹。"),
             ("seven_deliveries", "七日炼心", "七次交付后，你开始从‘知道’走向‘能够稳定做到’。"),
             ("image_note", "画中有道", "一张图进入笔记，文字与视觉开始共同承担思考。"),
-            ("all_herbs", "百草同春", "所有主线都萌芽了。广度不是分散，而是让不同能力开始互相供养。"),
+            ("all_herbs", "百草同春", "所有方向都萌芽了。广度不是分散，而是让不同能力开始互相供养。"),
         ]
         for egg_key, title, description in starter_eggs:
             conn.execute("INSERT OR IGNORE INTO easter_eggs(egg_key,title,description) VALUES (?,?,?)", (egg_key,title,description))
