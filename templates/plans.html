@@ -2,7 +2,7 @@
 {% block title %}近期计划 · {{ site_name }}{% endblock %}
 {% block content %}
 <div class="page-head minimal-head">
-  <div><span class="eyebrow">Flexible Plans</span><h1>近期计划</h1><p>只安排眼前3–7天。新计划可以随时替换旧计划，不建立长期主线，也不制造补课债务。</p></div>
+  <div><span class="eyebrow">Flexible Plans</span><h1>近期计划</h1><p>修炼任务管跨天成果，每日计划管3–7天具体行动。二者可在一次文本中导入，但会保存到两套独立记录。</p></div>
   <a class="soft-button" href="https://chatgpt.com/" target="_blank" rel="noopener">打开 ChatGPT</a>
 </div>
 
@@ -20,13 +20,16 @@
       <p>无需在网站逐项创建。让任意大模型输出下方格式，粘贴一次即可。</p>
       <form method="post" action="{{ url_for('plan_import') }}">
         <textarea name="plan_text" rows="15" required placeholder="# 我的计划
-> 每天三项必做，一项可选
+> 用三天推进一个眼前问题
+## 修炼任务
+- [进阶] 能够独立判断CV曲线主要问题 | 验收：完成3张盲测判读记录 | 工作区：EG 实验
 ## Day 1 | 电化学起点
-- [重点] 理解电荷与电势 | 45min | 24XP | 交付：概念图
-- [分子动力学] 整理LJ案例 | 30min | 16XP | 交付：README或ZIP
-- [英语与雅思] 局部精读 | 20min | 10XP | 交付：词卡或TXT"></textarea>
+- [重点] 判读一张CV曲线 | 45min | 交付：三句话判读 | 关联修炼：能够独立判断CV曲线主要问题
+- [工具] 整理LJ案例 | 30min | 交付：README或ZIP
+- [可选] 局部精读 | 20min | 交付：词卡或TXT"></textarea>
         <button class="primary-button full-button">导入并启用</button>
       </form>
+      <small class="form-help">不要写 XP。即使旧文案含有 XP，系统也会忽略并按时长统一计算：≤20 / ≤45 / ≤75 / ≤120 / 120分钟以上，分别为 6 / 10 / 16 / 22 / 30 修为。</small>
     </details>
   </section>
 
@@ -53,7 +56,8 @@
     <form method="post" action="{{ url_for('plan_mission_save', plan_id=selected.id, mission_id=mission.id) }}" class="mission-edit-card">
       <div class="form-grid two"><label><span>任务</span><input name="title" value="{{ mission.title }}" required></label><label><span>关联领域（可选）</span><select name="track_id"><option value="">自动判断</option>{% for track in tracks %}<option value="{{ track.id }}" {% if mission.track_id==track.id %}selected{% endif %}>{{ track.name }}</option>{% endfor %}</select></label></div>
       <div class="form-grid two"><label><span>分类</span><input name="category" value="{{ mission.category }}"></label><label><span>最小交付</span><input name="deliverable" value="{{ mission.deliverable }}"></label></div>
-      <input type="hidden" name="description" value="{{ mission.description }}"><input type="hidden" name="duration_minutes" value="{{ mission.duration_minutes }}"><input type="hidden" name="xp" value="{{ mission.xp }}"><input type="hidden" name="optional" value="{{ 1 if mission.optional else 0 }}">
+      <div class="form-grid two"><label><span>预计分钟</span><input type="number" min="5" max="240" name="duration_minutes" value="{{ mission.duration_minutes }}"><small>当前统一奖励：{{ mission.xp }}修为</small></label><label><span>关联修炼任务（可选）</span><select name="quest_id"><option value="">不关联</option>{% for task in cultivation_tasks %}<option value="{{ task.id }}" {% if mission.quest_id==task.id %}selected{% endif %}>{{ task.title }}</option>{% endfor %}</select></label></div>
+      <input type="hidden" name="description" value="{{ mission.description }}"><input type="hidden" name="optional" value="{{ 1 if mission.optional else 0 }}">
       <button class="soft-button">保存这项</button>
     </form>
     {% endfor %}

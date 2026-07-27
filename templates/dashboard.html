@@ -9,12 +9,12 @@
   <div class="gate-mist mist-two"></div>
 
   <div class="gate-copy">
-    <span class="gate-date">{{ today_label }} · {{ realm.name }}</span>
+    <span class="gate-date">{{ today_label }} · 今日一诗 · 每日更换</span>
     <blockquote>{{ ui_home_poem }}</blockquote>
-    <p>欢迎归山，{{ researcher_name }}。不必先面对整个系统，今天只从一扇门开始。</p>
+    <p>{{ realm.name }} · 欢迎归山，{{ researcher_name }}。今天只推进眼前这一小步。</p>
     <div class="gate-actions">
-      <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">开始今日修炼 <span>→</span></a>
-      <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整近期计划</a>
+      <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">{{ nav_labels.start }} <span>→</span></a>
+      <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整{{ nav_labels.plans }}</a>
     </div>
   </div>
 
@@ -25,79 +25,11 @@
   </a>
 </section>
 
-<form class="home-search" action="{{ url_for('search') }}" method="get">
-  <span class="home-search-mark">寻</span>
-  <input name="q" aria-label="检索知识库" placeholder="检索论文、笔记、实验、数据与代码……">
-  <button type="submit">搜尽藏书</button>
-</form>
-
-<section class="home-portal-grid" aria-label="核心入口">
-  <article class="portal-card portal-cultivate">
-    <div class="portal-mark">始</div>
-    <div class="portal-copy">
-      <span>每日行动</span>
-      <h2>开始修炼</h2>
-      {% if active_plan %}
-      <p>近期计划「{{ active_plan.name }}」· 第 {{ active_plan.current_day }} 日</p>
-      <div class="portal-progress"><i style="width:{{ today_progress }}%"></i></div>
-      {% set next_mission = today_missions|rejectattr('completed')|first %}
-      <small>{{ next_mission.title if next_mission else '今日任务均已交付，可以开启下一关。' }}</small>
-      {% else %}
-      <p>先导入一份可以随时改变的近期计划。</p>
-      <small>不设长期主线，不制造任务债务。</small>
-      {% endif %}
-    </div>
-    <a class="portal-link" href="{{ url_for('daily_page') }}">进入 <span>→</span></a>
-  </article>
-
-  <article class="portal-card portal-review">
-    <div class="portal-mark">温</div>
-    <div class="portal-copy">
-      <span>主动提取</span>
-      <h2>温故而知新</h2>
-      {% if pending_review %}
-      <p>{{ pending_review.source_date }} 的 {{ pending_review.source_count }} 份交付等待复盘。</p>
-      <small>问题只来自你亲手留下的复盘关键文本。</small>
-      {% else %}
-      <p>从自己的交付中抽题，答案与证据默认隐藏。</p>
-      <small>妖兽挑战与雷劫也从这里取材。</small>
-      {% endif %}
-    </div>
-    <a class="portal-link" href="{{ url_for('review_page') }}">复习 <span>→</span></a>
-  </article>
-
-  <article class="portal-card portal-retreat">
-    <div class="portal-mark">静</div>
-    <div class="portal-copy">
-      <span>专注时段</span>
-      <h2>入定闭关</h2>
-      <p>25、45、90 分钟或自定义倒计时。</p>
-      <small>刷新或切换页面后，剩余时间仍会继续。</small>
-    </div>
-    <a class="portal-link" href="{{ url_for('retreat_page') }}">闭关 <span>→</span></a>
-  </article>
-
-  <article class="portal-card portal-knowledge">
-    <div class="portal-mark">藏</div>
-    <div class="portal-copy">
-      <span>个人资产</span>
-      <h2>我的知识库</h2>
-      <p>{{ stats.total }} 条知识 · {{ stats.documents }} 份文献 · {{ stats.datasets }} 个数据集</p>
-      <small>Markdown、JSON 与原附件可一键带走。</small>
-    </div>
-    <div class="portal-actions">
-      <a class="portal-link" href="{{ url_for('library') }}">进入 <span>→</span></a>
-      <a class="portal-sub-link" href="{{ url_for('knowledge_export') }}">一键导出</a>
-    </div>
-  </article>
-</section>
-
-<section class="home-quiet-tools" aria-label="快捷工具">
-  <span>随手留下科研痕迹</span>
-  <a href="{{ url_for('note_new') }}">写一则笔记</a>
-  <a href="{{ url_for('upload') }}">收录一份资料</a>
-  <a href="{{ url_for('assistant_page') }}">与 AI 协作</a>
-  <button type="button" data-open-menu>展开全部菜单</button>
+<section class="gate-shortcuts" aria-label="核心入口">
+  <a class="gate-shortcut shortcut-cultivation" href="{{ url_for('cultivation_page') }}"><span>境</span><div><small>能力与成果里程碑</small><strong>{{ nav_labels.cultivation }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-review" href="{{ url_for('review_page') }}"><span>温</span><div><small>{% if pending_review %}{{ pending_review.source_count }} 份交付待复盘{% else %}从真实交付主动提取{% endif %}</small><strong>{{ nav_labels.review }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-retreat" href="{{ url_for('retreat_page') }}"><span>静</span><div><small>自定义专注倒计时</small><strong>{{ nav_labels.retreat }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-knowledge" href="{{ url_for('library') }}"><span>藏</span><div><small>{{ stats.total }} 条知识 · 可检索导出</small><strong>{{ nav_labels.library }}</strong></div><b>→</b></a>
 </section>
 
 {% if pending_review %}

@@ -15,9 +15,10 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from db import connect, now_iso
 from services.economy import award_mission, balance, balances, transact
-from services.plan_import import PlanSpec, build_default_plan, parse_plan_text
+from services.plan_import import PlanSpec, build_default_plan, parse_plan_text, render_plan_text
 from services.prompt_builder import build_plan_prompt, current_state
 from services.online_sync import best_effort_sync, queue_event
+from services.progression import fixed_cultivation_xp, fixed_daily_xp
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DELIVERY_DIR = BASE_DIR / "storage" / "deliveries"
@@ -62,23 +63,66 @@ def _infer_track_id(conn, category: str, title: str, description: str = "") -> i
 
 def _insert_plan(conn, spec: PlanSpec, make_active: bool = True) -> int:
     ts = now_iso()
+    quest_ids = {
+        str(row["title"]).strip(): int(row["id"])
+        for row in conn.execute("SELECT id,title FROM quests WHERE completed=0")
+    }
+    workspaces = {
+        str(row["name"]).strip().lower(): int(row["id"])
+        for row in conn.execute("SELECT id,name FROM workspaces WHERE active=1")
+    }
+    for task in spec.cultivation_tasks:
+        title = task.title.strip()
+        if not title or title in quest_ids:
+            continue
+        difficulty = max(1, min(int(task.difficulty or 1), 3))
+        workspace_id = workspaces.get(task.workspace_name.strip().lower()) if task.workspace_name else None
+        cur = conn.execute(
+            """
+            INSERT INTO quests(
+                title,description,deliverable,difficulty,xp,status,workspace_id,created_at,updated_at
+            ) VALUES (?,?,?,?,?,'planned',?,?,?)
+            """,
+            (
+                title,
+                task.description.strip(),
+                task.deliverable.strip(),
+                difficulty,
+                fixed_cultivation_xp(difficulty),
+                workspace_id,
+                ts,
+                ts,
+            ),
+        )
+        quest_ids[title] = int(cur.lastrowid)
     if make_active:
         conn.execute("UPDATE study_plans SET status='archived' WHERE status='active'")
     cur = conn.execute(
         "INSERT INTO study_plans(name,description,current_day,total_days,status,source_text,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
-        (spec.name, spec.description, 1, max(day.index for day in spec.days), "active" if make_active else "archived", spec.source_text, ts, ts),
+        (
+            spec.name,
+            spec.description,
+            1,
+            max(day.index for day in spec.days),
+            "active" if make_active else "archived",
+            render_plan_text(spec),
+            ts,
+            ts,
+        ),
     )
     plan_id = int(cur.lastrowid)
     for day in spec.days:
         for order, mission in enumerate(day.missions):
             track_id = _infer_track_id(conn, mission.category, mission.title, mission.description)
+            quest_id = quest_ids.get(mission.cultivation_title.strip()) if mission.cultivation_title else None
             conn.execute(
                 """INSERT INTO daily_missions(
-                    plan_id,day_index,category,title,description,deliverable,duration_minutes,xp,optional,track_id,sort_order,created_at,updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    plan_id,day_index,category,title,description,deliverable,duration_minutes,xp,optional,track_id,quest_id,sort_order,created_at,updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     plan_id, day.index, mission.category, mission.title, mission.description,
-                    mission.deliverable, mission.duration_minutes, mission.xp, int(mission.optional), track_id, order, ts, ts,
+                    mission.deliverable, mission.duration_minutes, fixed_daily_xp(mission.duration_minutes),
+                    int(mission.optional), track_id, quest_id, order, ts, ts,
                 ),
             )
     return plan_id
@@ -138,9 +182,11 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
             current_day = max(1, min(int(day or plan["current_day"]), int(plan["total_days"])))
             missions = []
             for row in conn.execute(
-                """SELECT m.*,t.name track_name,t.icon track_icon,
+                """SELECT m.*,t.name track_name,t.icon track_icon,q.title cultivation_title,
                     (SELECT COUNT(*) FROM mission_deliveries d WHERE d.mission_id=m.id) delivery_count
-                   FROM daily_missions m LEFT JOIN research_tracks t ON t.id=m.track_id
+                   FROM daily_missions m
+                   LEFT JOIN research_tracks t ON t.id=m.track_id
+                   LEFT JOIN quests q ON q.id=m.quest_id
                    WHERE m.plan_id=? AND m.day_index=? ORDER BY m.optional,m.sort_order,m.id""",
                 (plan["id"], current_day),
             ):
@@ -397,18 +443,25 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
             if selected:
                 selected_day = max(1, min(int(day or selected["current_day"]), int(selected["total_days"])))
                 missions = [dict(row) for row in conn.execute(
-                    """SELECT m.*,t.name track_name FROM daily_missions m LEFT JOIN research_tracks t ON t.id=m.track_id
+                    """SELECT m.*,t.name track_name,q.title cultivation_title
+                       FROM daily_missions m
+                       LEFT JOIN research_tracks t ON t.id=m.track_id
+                       LEFT JOIN quests q ON q.id=m.quest_id
                        WHERE m.plan_id=? AND m.day_index=? ORDER BY m.optional,m.sort_order,m.id""",
                     (selected["id"], selected_day),
                 )]
                 day_map = [row["day_index"] for row in conn.execute("SELECT DISTINCT day_index FROM daily_missions WHERE plan_id=? ORDER BY day_index", (selected["id"],))]
             tracks = [dict(row) for row in conn.execute("SELECT id,name FROM research_tracks WHERE active=1 ORDER BY sort_order,id")]
+            cultivation_tasks = [
+                dict(row)
+                for row in conn.execute("SELECT id,title FROM quests WHERE completed=0 ORDER BY difficulty DESC,updated_at DESC,id")
+            ]
             plan_prompt = build_plan_prompt(current_state(conn))
         return templates.TemplateResponse(
             request=request, name="plans.html",
             context=context(request, "plans", plans=plans, selected=dict(selected) if selected else None,
                             missions=missions, day_map=day_map, selected_day=selected_day, tracks=tracks,
-                            plan_prompt=plan_prompt),
+                            cultivation_tasks=cultivation_tasks, plan_prompt=plan_prompt),
         )
 
     @router.post("/plans/import", name="plan_import")
@@ -420,9 +473,18 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
             return go(request, "plans_page")
         with connect() as conn:
             plan_id = _insert_plan(conn, spec, make_active=True)
-            conn.execute("INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)", ("plan_import", 20, f"导入学习计划：{spec.name}", now_iso()))
+            conn.execute(
+                "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
+                ("plan_import", 0, f"导入学习计划：{spec.name}", now_iso()),
+            )
             conn.commit()
-        flash(request, f"已导入 {len(spec.days)} 天计划。", "success")
+        flash(
+            request,
+            f"已导入 {len(spec.days)} 天计划"
+            f"{f'，并新增 {len(spec.cultivation_tasks)} 项独立修炼任务' if spec.cultivation_tasks else ''}。"
+            "经验值已按系统统一规则计算。",
+            "success",
+        )
         return RedirectResponse(f"{request.url_for('plans_page')}?plan_id={plan_id}", status_code=303)
 
     @router.post("/plans/{plan_id}/activate", name="plan_activate")
@@ -447,18 +509,33 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
     @router.post("/plans/{plan_id}/mission/{mission_id}/save", name="plan_mission_save")
     def plan_mission_save(
         request: Request, plan_id: int, mission_id: int, category: str = Form("重点"), title: str = Form(...),
-        description: str = Form(""), deliverable: str = Form(""), duration_minutes: int = Form(30), xp: int = Form(10),
-        optional: str = Form(""), track_id: str = Form(""),
+        description: str = Form(""), deliverable: str = Form(""), duration_minutes: int = Form(30),
+        optional: str = Form(""), track_id: str = Form(""), quest_id: str = Form(""),
     ):
         track_value = int(track_id) if track_id.isdigit() else None
+        quest_value = int(quest_id) if quest_id.isdigit() else None
+        duration_value = max(5, min(int(duration_minutes or 30), 240))
         with connect() as conn:
             row = conn.execute("SELECT day_index FROM daily_missions WHERE id=? AND plan_id=?", (mission_id, plan_id)).fetchone()
             if track_value is None:
                 track_value = _infer_track_id(conn, category, title, description)
             conn.execute(
-                """UPDATE daily_missions SET category=?,title=?,description=?,deliverable=?,duration_minutes=?,xp=?,optional=?,track_id=?,updated_at=?
+                """UPDATE daily_missions SET category=?,title=?,description=?,deliverable=?,duration_minutes=?,xp=?,optional=?,track_id=?,quest_id=?,updated_at=?
                    WHERE id=? AND plan_id=?""",
-                (category.strip() or "重点", title.strip(), description.strip(), deliverable.strip(), max(5, duration_minutes), max(1, xp), int(optional == "1"), track_value, now_iso(), mission_id, plan_id),
+                (
+                    category.strip() or "重点",
+                    title.strip(),
+                    description.strip(),
+                    deliverable.strip(),
+                    duration_value,
+                    fixed_daily_xp(duration_value),
+                    int(optional == "1"),
+                    track_value,
+                    quest_value,
+                    now_iso(),
+                    mission_id,
+                    plan_id,
+                ),
             )
             conn.commit()
         flash(request, "任务已修改。", "success")

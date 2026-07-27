@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ workspace.name }} · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head minimal-head">
+  <div><span class="eyebrow">Personal Workspace</span><h1>{{ workspace.icon }} {{ workspace.name }}</h1><p>{{ workspace.description or '这是一个由你定义的科研专题空间。' }}</p></div>
+  <div class="page-actions"><a class="soft-button" href="{{ url_for('workspaces_page') }}">管理工作区</a><a class="primary-button" href="{{ url_for('upload') }}?workspace_id={{ workspace.id }}">收录资料</a></div>
+</div>
+
+{% if entries %}
+<section class="entry-grid workspace-entry-grid">
+  {% for entry in entries %}
+  <a class="entry-card" href="{{ url_for('entry_view', entry_id=entry.id) }}">
+    <span class="entry-icon">{{ entry.kind_icon }}</span>
+    <div><span class="eyebrow">{{ entry.kind_label }} · {{ entry.domain }}</span><h3>{{ entry.title }}</h3><p>{{ entry.summary or '尚未补充摘要。' }}</p></div>
+    <small>{{ entry.updated_at|datecn }}</small>
+  </a>
+  {% endfor %}
+</section>
+{% else %}
+<section class="empty-state panel"><div>{{ workspace.icon }}</div><h2>工作区还是空的</h2><p>收录第一份论文、笔记、代码或附件；以后可从这里集中进入。</p><a class="primary-button" href="{{ url_for('upload') }}?workspace_id={{ workspace.id }}">收录第一份资料</a></section>
+{% endif %}
+{% endblock %}

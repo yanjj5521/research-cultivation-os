@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from services.progression import fixed_daily_xp
+
 
 @dataclass
 class MissionSpec:
@@ -12,8 +14,23 @@ class MissionSpec:
     description: str = ""
     deliverable: str = ""
     duration_minutes: int = 30
-    xp: int = 10
+    xp: int = 0
     optional: bool = False
+    cultivation_title: str = ""
+
+    def __post_init__(self) -> None:
+        self.duration_minutes = max(5, min(int(self.duration_minutes or 30), 240))
+        # XP is a system rule. Imported or manually supplied values never win.
+        self.xp = fixed_daily_xp(self.duration_minutes)
+
+
+@dataclass
+class CultivationTaskSpec:
+    title: str
+    description: str = ""
+    deliverable: str = ""
+    difficulty: int = 1
+    workspace_name: str = ""
 
 
 @dataclass
@@ -29,6 +46,7 @@ class PlanSpec:
     description: str
     days: list[DaySpec]
     source_text: str
+    cultivation_tasks: list[CultivationTaskSpec] = field(default_factory=list)
 
 
 CATEGORY_ALIASES = {
@@ -66,8 +84,10 @@ def parse_plan_text(text: str) -> PlanSpec:
     Recommended format:
       # 本周近期计划
       > 说明
+      ## 修炼任务
+      - [进阶] 独立判读CV曲线 | 验收：完成一份盲测判读记录
       ## Day 1 | 电化学起点
-      - [重点] 电荷—电流—电势 | 45min | 20XP | 交付：概念图
+      - [重点] 电荷—电流—电势 | 45min | 交付：概念图
 
     Extra fields can be added as `说明：...` or `交付：...` segments.
     """
@@ -78,7 +98,9 @@ def parse_plan_text(text: str) -> PlanSpec:
     name = "AI导入计划"
     description_parts: list[str] = []
     days: list[DaySpec] = []
+    cultivation_tasks: list[CultivationTaskSpec] = []
     current: DaySpec | None = None
+    section = ""
 
     for raw in source.splitlines():
         line = raw.strip()
@@ -90,17 +112,57 @@ def parse_plan_text(text: str) -> PlanSpec:
         if line.startswith(">"):
             description_parts.append(line.lstrip("> ").strip())
             continue
+        if re.match(r"^#{2,4}\s*(修炼任务|能力目标|成果里程碑)\s*$", line, re.I):
+            current = None
+            section = "cultivation"
+            continue
         heading = re.match(r"^#{2,4}\s*(?:Day|第)?\s*(\d+)\s*(?:天|日)?\s*(?:[|｜·—:-]\s*)?(.*)$", line, re.I)
         if heading:
             index = int(heading.group(1))
             title = heading.group(2).strip() or f"第 {index} 日"
             current = DaySpec(index=index, title=title)
             days.append(current)
-            continue
-        if current is None:
+            section = "daily"
             continue
         task = re.match(r"^[-*+]\s*(?:\[([^\]]+)\])?\s*(.+)$", line)
         if not task:
+            continue
+        if section == "cultivation":
+            marker = (task.group(1) or "小成").strip().lower()
+            difficulty = {
+                "1": 1, "小成": 1, "基础": 1, "入门": 1,
+                "2": 2, "进阶": 2, "熟练": 2,
+                "3": 3, "突破": 3, "挑战": 3,
+            }.get(marker, 1)
+            parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task.group(2)) if part.strip()]
+            if not parts:
+                continue
+            description = ""
+            deliverable = ""
+            workspace_name = ""
+            for part in parts[1:]:
+                if re.match(r"^(交付|验收|证据|达成标准)[：:]", part):
+                    deliverable = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+                elif re.match(r"^(说明|描述)[：:]", part):
+                    description = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+                elif re.match(r"^(工作区|领域)[：:]", part):
+                    workspace_name = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+                elif "xp" in part.lower() or "修为" in part or "经验" in part:
+                    # Cultivation rewards are also determined by the fixed difficulty table.
+                    continue
+                else:
+                    description = f"{description} {part}".strip()
+            cultivation_tasks.append(
+                CultivationTaskSpec(
+                    title=parts[0],
+                    description=description,
+                    deliverable=deliverable,
+                    difficulty=difficulty,
+                    workspace_name=workspace_name,
+                )
+            )
+            continue
+        if current is None:
             continue
         category, optional = _clean_category(task.group(1) or "重点")
         parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task.group(2)) if part.strip()]
@@ -108,17 +170,20 @@ def parse_plan_text(text: str) -> PlanSpec:
             continue
         title = parts[0]
         duration = 30
-        xp = 10
         deliverable = ""
         detail = ""
+        cultivation_title = ""
         for part in parts[1:]:
             lower = part.lower()
             if "min" in lower or "分钟" in part:
                 duration = _to_int(part, duration)
-            elif "xp" in lower or "修为" in part:
-                xp = _to_int(part, xp)
+            elif "xp" in lower or "修为" in part or "经验" in part:
+                # Accepted only for backward compatibility; deliberately ignored.
+                continue
             elif re.match(r"^(交付|证据|产出)[：:]", part):
                 deliverable = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+            elif re.match(r"^(关联修炼|修炼任务|关联目标)[：:]", part):
+                cultivation_title = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             elif re.match(r"^(说明|提示|内容)[：:]", part):
                 detail = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             else:
@@ -130,8 +195,8 @@ def parse_plan_text(text: str) -> PlanSpec:
                 description=detail,
                 deliverable=deliverable,
                 duration_minutes=max(5, min(duration, 240)),
-                xp=max(1, min(xp, 100)),
                 optional=optional,
+                cultivation_title=cultivation_title,
             )
         )
 
@@ -140,27 +205,42 @@ def parse_plan_text(text: str) -> PlanSpec:
         raise ValueError("没有识别到 Day 1 / 第1天 等日标题")
     for day in days:
         if not day.missions:
-            day.missions.append(MissionSpec(category="重点", title=day.title, duration_minutes=30, xp=10))
+            day.missions.append(MissionSpec(category="重点", title=day.title, duration_minutes=30))
     return PlanSpec(
         name=name,
         description=" ".join(description_parts).strip() or "由 AI 文案导入，可随时继续修改。",
         days=days,
         source_text=source,
+        cultivation_tasks=cultivation_tasks,
     )
 
 
 def render_plan_text(plan: PlanSpec) -> str:
     lines = [f"# {plan.name}", f"> {plan.description}", ""]
+    if plan.cultivation_tasks:
+        labels = {1: "小成", 2: "进阶", 3: "突破"}
+        lines.append("## 修炼任务")
+        for task in plan.cultivation_tasks:
+            parts = [f"- [{labels.get(task.difficulty, '小成')}] {task.title}"]
+            if task.deliverable:
+                parts.append(f"验收：{task.deliverable}")
+            if task.workspace_name:
+                parts.append(f"工作区：{task.workspace_name}")
+            if task.description:
+                parts.append(f"说明：{task.description}")
+            lines.append(" | ".join(parts))
+        lines.append("")
     for day in plan.days:
         lines.append(f"## Day {day.index} | {day.title}")
         for mission in day.missions:
             parts = [
                 f"- [{mission.category}] {mission.title}",
                 f"{mission.duration_minutes}min",
-                f"{mission.xp}XP",
             ]
             if mission.deliverable:
                 parts.append(f"交付：{mission.deliverable}")
+            if mission.cultivation_title:
+                parts.append(f"关联修炼：{mission.cultivation_title}")
             if mission.description:
                 parts.append(f"说明：{mission.description}")
             lines.append(" | ".join(parts))

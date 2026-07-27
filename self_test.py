@@ -19,7 +19,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v1.3 loop.
+    """Exercise the complete v1.4 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -27,10 +27,12 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
 
     plan_text = """# 自检近期计划
 > 用真实交付驱动复盘
+## 修炼任务
+- [进阶] 建立证据边界判断能力 | 验收：完成一张命题—反例—验证表 | 工作区：EG 实验
 ## Day 1 | 证据链
-- [重点] 检查一条科研判断 | 20min | 12XP | 交付：一张证据卡
+- [重点] 检查一条科研判断 | 20min | 999XP | 交付：一张证据卡 | 关联修炼：建立证据边界判断能力
 ## Day 2 | 修正
-- [可选] 写出反例 | 15min | 8XP | 交付：反例与验证办法
+- [可选] 写出反例 | 15min | 888经验 | 交付：反例与验证办法
 """
     _check_response(
         failures,
@@ -45,9 +47,18 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "SELECT * FROM daily_missions WHERE plan_id=? AND day_index=1 ORDER BY id LIMIT 1",
             (plan["id"],),
         ).fetchone() if plan else None
+        cultivation_task = conn.execute(
+            "SELECT * FROM quests WHERE title='建立证据边界判断能力' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
     if not plan or not mission:
         failures.append("plan import did not create the expected mission")
         return
+    if not cultivation_task or int(mission["quest_id"] or 0) != int(cultivation_task["id"]):
+        failures.append("plan import did not keep cultivation and daily tasks separate but linked")
+    if int(mission["xp"]) != 6:
+        failures.append("imported XP was not ignored in favor of the fixed duration rule")
+    if "999XP" in plan["source_text"] or "888经验" in plan["source_text"]:
+        failures.append("custom reward fields were not removed from the normalized plan text")
 
     _check_response(
         failures,
@@ -94,11 +105,127 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             files={"files": ("evidence.txt", b"evidence-backed research note", "text/plain")},
         ),
     )
+    _check_response(
+        failures,
+        "custom workspace create",
+        client.post(
+            "/workspaces/new",
+            data={
+                "name": "自检专题空间",
+                "icon": "测",
+                "module": "knowledge",
+                "description": "验证每个人可拥有不同工作区。",
+            },
+        ),
+    )
+    with connect() as conn:
+        workspace = conn.execute(
+            "SELECT * FROM workspaces WHERE name='自检专题空间' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if not workspace:
+        failures.append("custom workspace was not created")
+    else:
+        _check_response(
+            failures,
+            "workspace attachment upload",
+            client.post(
+                "/upload",
+                data={
+                    "kind": "note",
+                    "domain": "电化学",
+                    "summary": "仅属于自检专题空间。",
+                    "workspace_id": str(workspace["id"]),
+                },
+                files={"files": ("workspace-note.txt", b"workspace scoped note", "text/plain")},
+            ),
+        )
+        workspace_page = client.get(f"/workspaces/{workspace['id']}")
+        _check_response(failures, "custom workspace open", workspace_page)
+        if "workspace-note" not in workspace_page.text:
+            failures.append("custom workspace did not show its assigned knowledge entry")
+
+    with connect() as conn:
+        default_workspaces = {
+            row["module"]: dict(row)
+            for row in conn.execute(
+                "SELECT * FROM workspaces WHERE workspace_key IN ('eg-lab','lammps-lab','dataset-lab')"
+            )
+        }
+    for module in ("experiments", "simulations", "datasets"):
+        workspace_item = default_workspaces.get(module)
+        if not workspace_item:
+            failures.append(f"default {module} workspace was not initialized")
+            continue
+        response = client.get(f"/workspaces/{workspace_item['id']}")
+        _check_response(failures, f"{module} workspace open", response)
+        if workspace_item["name"] not in response.text:
+            failures.append(f"{module} workspace did not open its personalized module page")
+
+    experiment_workspace = default_workspaces.get("experiments")
+    simulation_workspace = default_workspaces.get("simulations")
+    dataset_workspace = default_workspaces.get("datasets")
+    if experiment_workspace:
+        _check_response(
+            failures,
+            "workspace experiment create",
+            client.post(
+                "/experiments/save",
+                data={
+                    "sample_id": "SELFTEST-EG-01",
+                    "title": "工作区实验",
+                    "workspace_id": str(experiment_workspace["id"]),
+                },
+            ),
+        )
+    if simulation_workspace:
+        _check_response(
+            failures,
+            "workspace simulation create",
+            client.post(
+                "/simulations/new",
+                data={
+                    "case_name": "SELFTEST-LAMMPS-01",
+                    "workspace_id": str(simulation_workspace["id"]),
+                },
+            ),
+        )
+    if dataset_workspace:
+        _check_response(
+            failures,
+            "workspace dataset create",
+            client.post(
+                "/upload",
+                data={
+                    "title": "自检工作区数据集",
+                    "kind": "dataset",
+                    "workspace_id": str(dataset_workspace["id"]),
+                },
+                files={"files": ("selftest.csv", b"x,y\n1,2\n", "text/csv")},
+            ),
+        )
+    with connect() as conn:
+        if experiment_workspace and conn.execute(
+            "SELECT COUNT(*) n FROM experiments WHERE sample_id='SELFTEST-EG-01' AND workspace_id=?",
+            (experiment_workspace["id"],),
+        ).fetchone()["n"] != 1:
+            failures.append("experiment record was not scoped to its personal workspace")
+        if simulation_workspace and conn.execute(
+            "SELECT COUNT(*) n FROM simulations WHERE case_name='SELFTEST-LAMMPS-01' AND workspace_id=?",
+            (simulation_workspace["id"],),
+        ).fetchone()["n"] != 1:
+            failures.append("simulation record was not scoped to its personal workspace")
+        if dataset_workspace and conn.execute(
+            "SELECT COUNT(*) n FROM entries WHERE title='自检工作区数据集' AND workspace_id=?",
+            (dataset_workspace["id"],),
+        ).fetchone()["n"] != 1:
+            failures.append("dataset record was not scoped to its personal workspace")
 
     dashboard = client.get("/")
     _check_response(failures, "pending review dashboard", dashboard)
     if "昨日复盘" not in dashboard.text:
         failures.append("dashboard did not surface the pending review")
+    if dashboard.text.count("gate-shortcut") < 4 or "home-portal-grid" in dashboard.text:
+        failures.append("dashboard did not use the compact v1.4 gate shortcuts")
 
     _check_response(
         failures,
@@ -207,8 +334,8 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         client.post("/alchemy/pills/clarity_pill/use"),
     )
 
-    realm_names = "\n".join(["见习研究者", "证据学徒"])
-    nav_labels = "\n".join(["dashboard=科研台", "alchemy=实验炼丹房"])
+    realm_names = "\n".join(["mortal=见习研究者", "body_early=证据学徒"])
+    nav_labels = "\n".join(["dashboard=科研台", "alchemy=实验炼丹房", "group_workspaces=我的实验空间"])
     _check_response(
         failures,
         "personalization settings",
@@ -224,6 +351,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
                 "realm_names": realm_names,
                 "nav_labels": nav_labels,
                 "review_popup": "1",
+                "poem_pool": "问渠那得清如许？为有源头活水来。——朱熹\n纸上得来终觉浅，绝知此事要躬行。——陆游",
             },
         ),
     )
@@ -259,8 +387,12 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v3":
-        failures.append("personalization export did not use the v3 format")
+    if package.get("format") != "research-cultivation-personalization-v4":
+        failures.append("personalization export did not use the v4 format")
+    if len(package.get("theme", {}).get("realm_names", {})) != 31:
+        failures.append("personalization export did not include the full realm map")
+    if not package.get("workspaces"):
+        failures.append("personalization export did not include workspace definitions")
     if not package.get("avatar_image", {}).get("data_base64"):
         failures.append("personalization export did not include the uploaded avatar")
     if "hub_api_token" in json.dumps(package, ensure_ascii=False):
@@ -283,6 +415,53 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     if get_setting("site_name") != "自检科研系统":
         failures.append("personalization import did not restore the site name")
 
+    legacy_package = {
+        "format": "research-cultivation-personalization-v1",
+        "theme": {
+            "realm_names": [
+                "旧包凡人", "旧包炼气一层", "旧包炼气中期", "旧包炼气圆满",
+                "旧包筑基初期", "旧包筑基圆满", "旧包金丹初成", "旧包金丹圆满",
+                "旧包元婴", "旧包化神", "旧包炼虚", "旧包合体", "旧包大乘", "旧包渡劫",
+            ],
+            "nav_labels": {"dashboard": "旧包首页"},
+        },
+        "profile": package.get("profile", {}),
+    }
+    _check_response(
+        failures,
+        "legacy personalization import",
+        client.post(
+            "/online/personalization/import",
+            files={
+                "file": (
+                    "personalization-v1.json",
+                    json.dumps(legacy_package, ensure_ascii=False).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        ),
+    )
+    imported_legacy_realms = json.loads(get_setting("realm_names", "{}"))
+    imported_legacy_nav = json.loads(get_setting("nav_labels", "{}"))
+    if len(imported_legacy_realms) != 31 or imported_legacy_realms.get("mortal") != "旧包凡人":
+        failures.append("legacy realm labels were not expanded without losing custom names")
+    if imported_legacy_nav.get("dashboard") != "旧包首页" or "group_workspaces" not in imported_legacy_nav:
+        failures.append("legacy navigation labels were not merged with new customizable items")
+    _check_response(
+        failures,
+        "restore current personalization",
+        client.post(
+            "/online/personalization/import",
+            files={
+                "file": (
+                    "personalization-v4.json",
+                    json.dumps(package, ensure_ascii=False).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        ),
+    )
+
     portable_knowledge = client.get("/knowledge/export")
     _check_response(failures, "portable knowledge export", portable_knowledge)
     try:
@@ -300,8 +479,8 @@ def main() -> None:
     integration = "--integration" in sys.argv
     client = TestClient(app.app)
     pages = [
-        "/", "/daily", "/review", "/retreat", "/alchemy", "/world", "/profile", "/plans",
-        "/foundation", "/assistant", "/notes/new", "/library", "/settings", "/online",
+        "/", "/cultivation", "/daily", "/review", "/retreat", "/alchemy", "/world", "/profile", "/plans",
+        "/foundation", "/assistant", "/notes/new", "/library", "/workspaces", "/settings", "/online",
     ]
     failures = []
     for page in pages:
@@ -322,6 +501,7 @@ def main() -> None:
             "player_profile", "easter_eggs", "track_growth", "online_sync_queue", "online_sync_cache",
             "review_sources", "review_sessions", "review_session_sources", "review_answers",
             "review_snoozes", "special_tasks", "herb_inventory",
+            "workspaces",
         }
         found = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         missing = sorted(required_tables - found)
@@ -342,7 +522,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v1.3 tables, knowledge export, retreat, online queue and local database are ready.")
+        print("Core pages, v1.4 task layers, workspaces, knowledge export and local database are ready.")
 
 
 if __name__ == "__main__":

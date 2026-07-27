@@ -20,6 +20,7 @@
   <aside class="panel editor-side">
     <label><span>类型</span><select name="kind">{% for key, meta in kinds.items() %}<option value="{{ key }}" {% if (entry and entry.kind == key) or (not entry and key == 'note') %}selected{% endif %}>{{ meta[1] }} {{ meta[0] }}</option>{% endfor %}</select></label>
     <label><span>领域</span><select name="domain">{% for item in domains %}<option value="{{ item }}" {% if entry and entry.domain == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+    <label><span>工作区（可选）</span><select name="workspace_id"><option value="">不指定</option>{% for workspace in workspaces %}<option value="{{ workspace.id }}" {% if selected_workspace_id==workspace.id %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</select></label>
     <label><span>标签</span><input name="tags" value="{{ entry.tags if entry else '' }}" placeholder="例如：CV, 电压窗口"></label>
     <label><span>一句话摘要</span><textarea name="summary" rows="4" placeholder="为什么值得保留？">{{ entry.summary if entry else '' }}</textarea></label>
     <label><span>来源 / 关联路径</span><input name="source" value="{{ entry.source if entry else '' }}" placeholder="DOI、实验编号或仓库路径"></label>

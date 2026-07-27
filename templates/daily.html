@@ -31,8 +31,9 @@
       <div class="mission-meta">
         <span>{{ mission.category }}</span>
         {% if mission.track_name %}<span>{{ mission.track_icon }} 滋养{{ mission.track_name }}</span>{% endif %}
+        {% if mission.cultivation_title %}<span>推进修炼 · {{ mission.cultivation_title }}</span>{% endif %}
         <span>{{ mission.duration_minutes }} 分钟</span>
-        <span>+{{ mission.xp }} 修为</span>
+        <span>统一奖励 +{{ mission.xp }} 修为</span>
       </div>
       <h2>{{ mission.title }}</h2>
       {% if mission.description %}<p>{{ mission.description }}</p>{% endif %}

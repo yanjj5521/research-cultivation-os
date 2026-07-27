@@ -7,8 +7,60 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from services.progression import (
+    default_realm_labels,
+    fixed_cultivation_xp,
+    fixed_daily_xp,
+    normalize_realm_labels,
+)
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "instance" / "research_os.db"
+
+DEFAULT_NAV_LABELS = {
+    "dashboard": "主页",
+    "daily": "每日任务",
+    "review": "昨日复盘",
+    "plans": "近期计划",
+    "retreat": "闭关计时",
+    "alchemy": "炼丹炉",
+    "world": "我的洞府",
+    "profile": "个人主页",
+    "assistant": "AI 协作",
+    "online": "联机同步",
+    "library": "知识库",
+    "folders": "交付文件夹",
+    "note_new": "写笔记",
+    "upload": "上传资料",
+    "search": "全库检索",
+    "discover": "联网找论文",
+    "datasets": "数据集",
+    "experiments": "EG 实验",
+    "simulations": "LAMMPS",
+    "cultivation": "修炼记录",
+    "workspaces": "工作区管理",
+    "settings": "设置与备份",
+    "group_cultivation": "修炼与行动",
+    "group_knowledge": "我的知识库",
+    "group_workspaces": "我的工作区",
+    "group_system": "系统与工具",
+    "more": "展开系统工具",
+    "start": "开始修炼",
+    "knowledge_export": "一键导出知识库",
+    "backup": "完整备份",
+}
+
+
+def normalize_nav_labels(value: Any) -> dict[str, str]:
+    labels = dict(DEFAULT_NAV_LABELS)
+    if isinstance(value, dict):
+        for key, default in DEFAULT_NAV_LABELS.items():
+            candidate = str(value.get(key, "")).strip()[:24]
+            if candidate:
+                labels[key] = candidate
+            elif key not in value:
+                labels[key] = default
+    return labels
 
 
 def now_iso() -> str:
@@ -69,6 +121,7 @@ def init_db() -> None:
                 favorite INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'active',
                 source TEXT NOT NULL DEFAULT '',
+                workspace_id INTEGER,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -91,8 +144,15 @@ def init_db() -> None:
                 completed INTEGER NOT NULL DEFAULT 0,
                 recurring TEXT NOT NULL DEFAULT 'once',
                 due_date TEXT,
+                deliverable TEXT NOT NULL DEFAULT '',
+                evidence TEXT NOT NULL DEFAULT '',
+                difficulty INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'planned',
+                workspace_id INTEGER,
+                xp_awarded INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                completed_at TEXT
+                completed_at TEXT,
+                updated_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS experiments (
@@ -125,6 +185,7 @@ def init_db() -> None:
                 next_step TEXT NOT NULL DEFAULT '',
                 tags TEXT NOT NULL DEFAULT '',
                 attachment_entry_id INTEGER,
+                workspace_id INTEGER,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(attachment_entry_id) REFERENCES entries(id) ON DELETE SET NULL
@@ -153,6 +214,7 @@ def init_db() -> None:
                 tags TEXT NOT NULL DEFAULT '',
                 folder_path TEXT NOT NULL DEFAULT '',
                 summary_json TEXT NOT NULL DEFAULT '{}',
+                workspace_id INTEGER,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -176,6 +238,20 @@ def init_db() -> None:
                 current_stage TEXT NOT NULL DEFAULT '',
                 next_focus TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_key TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                icon TEXT NOT NULL DEFAULT '研',
+                module TEXT NOT NULL DEFAULT 'knowledge',
+                description TEXT NOT NULL DEFAULT '',
+                accent TEXT NOT NULL DEFAULT 'clay',
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
@@ -247,6 +323,7 @@ def init_db() -> None:
                 optional INTEGER NOT NULL DEFAULT 0,
                 completed INTEGER NOT NULL DEFAULT 0,
                 xp_awarded INTEGER NOT NULL DEFAULT 0,
+                quest_id INTEGER,
                 completed_at TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -453,6 +530,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status);
             CREATE INDEX IF NOT EXISTS idx_simulations_updated ON simulations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_research_tracks_order ON research_tracks(sort_order, id);
+            CREATE INDEX IF NOT EXISTS idx_workspaces_order ON workspaces(active, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_research_plan_track ON research_plan_items(track_id, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_research_folders_track ON research_folders(track_id, updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_research_folder_files_folder ON research_folder_files(folder_id, relative_path);
@@ -474,12 +552,27 @@ def init_db() -> None:
         _add_column(conn, "entries", "indexed_at TEXT")
         _add_column(conn, "entries", "extract_status TEXT NOT NULL DEFAULT 'pending'")
         _add_column(conn, "entries", "content_format TEXT NOT NULL DEFAULT 'plain'")
+        _add_column(conn, "entries", "workspace_id INTEGER")
+        _add_column(conn, "experiments", "workspace_id INTEGER")
+        _add_column(conn, "simulations", "workspace_id INTEGER")
         _add_column(conn, "daily_missions", "track_id INTEGER")
+        _add_column(conn, "daily_missions", "quest_id INTEGER")
         _add_column(conn, "daily_missions", "stones_awarded INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "daily_missions", "materials_awarded INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "daily_missions", "postponed_count INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "mission_deliveries", "review_text TEXT NOT NULL DEFAULT ''")
         _add_column(conn, "mission_deliveries", "review_source TEXT NOT NULL DEFAULT 'manual'")
+        _add_column(conn, "quests", "deliverable TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "quests", "evidence TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "quests", "difficulty INTEGER NOT NULL DEFAULT 1")
+        _add_column(conn, "quests", "status TEXT NOT NULL DEFAULT 'planned'")
+        _add_column(conn, "quests", "workspace_id INTEGER")
+        _add_column(conn, "quests", "xp_awarded INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "quests", "updated_at TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_workspace ON entries(workspace_id, updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_workspace ON experiments(workspace_id, updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_simulations_workspace ON simulations(workspace_id, updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_quests_workspace ON quests(workspace_id, completed, updated_at DESC)")
 
         try:
             conn.execute(
@@ -525,7 +618,7 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "1.3.0",
+            "portable_version": "1.4.0",
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
@@ -535,32 +628,89 @@ def init_db() -> None:
             "ui_scene": "warm",
             "ui_home_motto": "让科研更好玩一点",
             "ui_home_poem": "纸上得来终觉浅，绝知此事要躬行。——陆游",
+            "ui_poem_pool": "[]",
             "avatar_file": "",
             "review_popup": "1",
-            "realm_names": json.dumps(
-                [
-                    "凡人", "炼气一层", "炼气中期", "炼气圆满", "筑基初期", "筑基圆满",
-                    "金丹初成", "金丹圆满", "元婴境", "化神境", "炼虚境", "合体境", "大乘境", "渡劫境",
-                ],
-                ensure_ascii=False,
-            ),
-            "nav_labels": json.dumps(
-                {
-                    "dashboard": "主页", "daily": "每日任务", "review": "昨日复盘",
-                    "plans": "近期计划", "retreat": "闭关计时", "alchemy": "炼丹炉", "world": "我的洞府",
-                    "profile": "个人主页", "assistant": "AI 协作", "online": "联机同步",
-                    "library": "知识库", "folders": "交付文件夹", "note_new": "写笔记",
-                    "upload": "上传资料", "search": "全库检索", "discover": "联网找论文",
-                    "datasets": "数据集", "experiments": "EG 实验", "simulations": "LAMMPS",
-                    "cultivation": "修炼记录", "settings": "设置与备份",
-                },
-                ensure_ascii=False,
-            ),
+            "realm_names": json.dumps(default_realm_labels(), ensure_ascii=False),
+            "nav_labels": json.dumps(DEFAULT_NAV_LABELS, ensure_ascii=False),
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
-        conn.execute("UPDATE settings SET value='1.3.0' WHERE key='portable_version'")
+        realm_row = conn.execute("SELECT value FROM settings WHERE key='realm_names'").fetchone()
+        try:
+            realm_value = json.loads(realm_row["value"]) if realm_row else {}
+        except json.JSONDecodeError:
+            realm_value = {}
+        conn.execute(
+            "UPDATE settings SET value=? WHERE key='realm_names'",
+            (json.dumps(normalize_realm_labels(realm_value), ensure_ascii=False),),
+        )
+        nav_row = conn.execute("SELECT value FROM settings WHERE key='nav_labels'").fetchone()
+        try:
+            nav_value = json.loads(nav_row["value"]) if nav_row else {}
+        except json.JSONDecodeError:
+            nav_value = {}
+        conn.execute(
+            "UPDATE settings SET value=? WHERE key='nav_labels'",
+            (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
+        )
+        conn.execute("UPDATE settings SET value='1.4.0' WHERE key='portable_version'")
         ts = now_iso()
+        default_workspaces = (
+            ("eg-lab", "EG 实验", "验", "experiments", "配比、成型、电化学与力学实验台账", "clay", 10),
+            ("lammps-lab", "LAMMPS", "算", "simulations", "可复现模拟案例、日志与轨迹归档", "ink", 20),
+            ("dataset-lab", "数据集", "数", "datasets", "实验表格、机器学习数据与变量说明", "sage", 30),
+        )
+        for workspace in default_workspaces:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO workspaces(
+                    workspace_key,name,icon,module,description,accent,sort_order,created_at,updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                """,
+                (*workspace, ts, ts),
+            )
+        workspace_ids = {
+            row["workspace_key"]: int(row["id"])
+            for row in conn.execute("SELECT id,workspace_key FROM workspaces")
+        }
+        if workspace_ids.get("eg-lab"):
+            conn.execute(
+                "UPDATE experiments SET workspace_id=? WHERE workspace_id IS NULL",
+                (workspace_ids["eg-lab"],),
+            )
+        if workspace_ids.get("lammps-lab"):
+            conn.execute(
+                "UPDATE simulations SET workspace_id=? WHERE workspace_id IS NULL",
+                (workspace_ids["lammps-lab"],),
+            )
+        if workspace_ids.get("dataset-lab"):
+            conn.execute(
+                "UPDATE entries SET workspace_id=? WHERE kind='dataset' AND workspace_id IS NULL",
+                (workspace_ids["dataset-lab"],),
+            )
+        for mission in conn.execute("SELECT id,duration_minutes FROM daily_missions"):
+            conn.execute(
+                "UPDATE daily_missions SET xp=? WHERE id=?",
+                (fixed_daily_xp(int(mission["duration_minutes"] or 30)), int(mission["id"])),
+            )
+        for quest in conn.execute("SELECT id,completed,difficulty FROM quests"):
+            difficulty = max(1, min(int(quest["difficulty"] or 1), 3))
+            conn.execute(
+                """
+                UPDATE quests
+                SET difficulty=?,xp=?,status=?,xp_awarded=CASE WHEN completed=1 THEN 1 ELSE xp_awarded END,
+                    updated_at=COALESCE(updated_at,created_at,?)
+                WHERE id=?
+                """,
+                (
+                    difficulty,
+                    fixed_cultivation_xp(difficulty),
+                    "done" if int(quest["completed"] or 0) else "planned",
+                    ts,
+                    int(quest["id"]),
+                ),
+            )
         conn.execute(
             "INSERT OR IGNORE INTO player_profile(id,display_name,title,bio,skills,capabilities,goals,avatar_symbol,updated_at) VALUES (1,?,?,?,?,?,?,?,?)",
             (
@@ -640,17 +790,30 @@ def init_db() -> None:
         quest_count = conn.execute("SELECT COUNT(*) AS n FROM quests").fetchone()["n"]
         if quest_count == 0:
             starter_quests = [
-                ("录入第一篇核心论文", "上传一篇与你当前方向直接相关的论文，并补充标签。", 25),
-                ("写下第一个科研问题", "创建一条问题笔记：现象、可能原因、下一步验证。", 20),
-                ("建立第一个数据集档案", "上传 CSV 或 XLSX，并补充变量说明。", 35),
-                ("完成一次失败复盘", "记录一次实验或代码失败，以及以后如何避免。", 30),
-                ("建立第一个EG实验批次", "把配比、压实、几何尺寸与电化学窗口录入实验模块。", 35),
-                ("归档第一个LAMMPS案例", "上传一个包含输入、日志和轨迹的可复现案例。", 40),
+                ("建立第一张论文证据卡", "上传一篇与你当前问题直接相关的论文，并写清它证明了什么。", "论文条目 + 证据摘要", 1, None),
+                ("形成第一个可证伪问题", "把模糊想法改写为变量、机制、结果和判断边界。", "问题—假设—证据—下一步卡片", 1, None),
+                ("建立第一个数据集档案", "上传 CSV 或 XLSX，并补充变量、单位和来源说明。", "可检索数据集 + 数据字典", 2, "dataset-lab"),
+                ("完成一次失败复盘", "记录一次实验或代码失败，并明确下次如何更早发现。", "失败现象—根因—修正—预防记录", 2, None),
+                ("建立第一个实验批次", "把配比、成型、几何尺寸、测试边界和结果录入实验台账。", "一个字段完整的实验批次", 2, "eg-lab"),
+                ("归档第一个可复现模拟案例", "保存输入、日志、轨迹、版本、命令和判定结果。", "可复现案例目录或 ZIP", 2, "lammps-lab"),
             ]
-            for title, description, xp in starter_quests:
+            for title, description, deliverable, difficulty, workspace_key in starter_quests:
                 conn.execute(
-                    "INSERT INTO quests(title, description, xp, created_at) VALUES (?, ?, ?, ?)",
-                    (title, description, xp, now_iso()),
+                    """
+                    INSERT INTO quests(
+                        title,description,deliverable,difficulty,xp,status,workspace_id,created_at,updated_at
+                    ) VALUES (?,?,?,?,?,'planned',?,?,?)
+                    """,
+                    (
+                        title,
+                        description,
+                        deliverable,
+                        difficulty,
+                        fixed_cultivation_xp(difficulty),
+                        workspace_ids.get(workspace_key) if workspace_key else None,
+                        ts,
+                        ts,
+                    ),
                 )
 
 

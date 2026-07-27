@@ -26,7 +26,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from db import DB_PATH, connect, get_setting, init_db, log_activity, now_iso, set_setting, total_xp
+from db import (
+    DB_PATH,
+    DEFAULT_NAV_LABELS,
+    connect,
+    get_setting,
+    init_db,
+    log_activity,
+    normalize_nav_labels,
+    now_iso,
+    set_setting,
+    total_xp,
+)
 from extractors import extract_file
 from research_tools import find_lammps_files, offline_paper_summary, parse_lammps_log, summary_to_markdown, unpack_lammps_bundle
 from services.economy import balances as asset_balances
@@ -34,6 +45,13 @@ from services.backups import register_backup_jobs
 from services.ai_provider import provider_status
 from services.profile_media import PROFILE_DIR, current_avatar_filename
 from services.review_engine import pending_review_group
+from services.progression import (
+    CULTIVATION_DIFFICULTY_LABELS,
+    REALM_STAGES,
+    default_realm_labels,
+    fixed_cultivation_xp,
+    normalize_realm_labels,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "storage" / "uploads"
@@ -71,46 +89,39 @@ def secure_filename(name: str) -> str:
     safe = re.sub(r"[^\w.\-]+", "_", base, flags=re.UNICODE).strip("._")
     return safe[:180] or "file"
 
-REALMS = [
-    (0, "凡人", "尚未踏入科研仙途"),
-    (80, "炼气一层", "开始积累基础知识"),
-    (180, "炼气中期", "形成稳定输入与输出"),
-    (350, "炼气圆满", "能够独立复现基础工作"),
-    (600, "筑基初期", "建立自己的研究体系"),
-    (950, "筑基圆满", "能够提出并验证科学问题"),
-    (1450, "金丹初成", "拥有可复用的方法与数据资产"),
-    (2200, "金丹圆满", "形成结构—机制—性能闭环"),
-    (3200, "元婴境", "可以稳定推进多条研究支线"),
-    (4600, "化神境", "形成鲜明科研判断与学术表达"),
-    (6500, "炼虚境", "能够构建团队级科研基础设施"),
-    (9000, "合体境", "知识、数据、方法高度协同"),
-    (12000, "大乘境", "能够定义问题并引领方向"),
-    (16000, "渡劫境", "成果、方法与传承体系成熟"),
+DEFAULT_POEMS = [
+    "纸上得来终觉浅，绝知此事要躬行。——陆游",
+    "问渠那得清如许？为有源头活水来。——朱熹",
+    "路漫漫其修远兮，吾将上下而求索。——屈原",
+    "不畏浮云遮望眼，自缘身在最高层。——王安石",
+    "博观而约取，厚积而薄发。——苏轼",
+    "欲穷千里目，更上一层楼。——王之涣",
+    "长风破浪会有时，直挂云帆济沧海。——李白",
+    "沉舟侧畔千帆过，病树前头万木春。——刘禹锡",
+    "山重水复疑无路，柳暗花明又一村。——陆游",
+    "千淘万漉虽辛苦，吹尽狂沙始到金。——刘禹锡",
+    "会当凌绝顶，一览众山小。——杜甫",
+    "不识庐山真面目，只缘身在此山中。——苏轼",
+    "操千曲而后晓声，观千剑而后识器。——刘勰",
+    "业精于勤，荒于嬉；行成于思，毁于随。——韩愈",
+    "锲而不舍，金石可镂。——荀子",
+    "知之者不如好之者，好之者不如乐之者。——《论语》",
+    "学而不思则罔，思而不学则殆。——《论语》",
+    "温故而知新，可以为师矣。——《论语》",
+    "知不足，然后能自反也。——《礼记》",
+    "合抱之木，生于毫末；九层之台，起于累土。——《道德经》",
+    "天下难事，必作于易；天下大事，必作于细。——《道德经》",
+    "胜人者有力，自胜者强。——《道德经》",
+    "行远自迩，登高自卑。——《礼记》",
+    "不积跬步，无以至千里；不积小流，无以成江海。——荀子",
+    "吾生也有涯，而知也无涯。——庄子",
+    "试玉要烧三日满，辨材须待七年期。——白居易",
+    "读书破万卷，下笔如有神。——杜甫",
+    "少年辛苦终身事，莫向光阴惰寸功。——杜荀鹤",
+    "及时当勉励，岁月不待人。——陶渊明",
+    "宝剑锋从磨砺出，梅花香自苦寒来。——《警世贤文》",
+    "莫愁前路无知己，天下谁人不识君。——高适",
 ]
-
-DEFAULT_NAV_LABELS = {
-    "dashboard": "主页",
-    "daily": "每日任务",
-    "review": "昨日复盘",
-    "plans": "近期计划",
-    "retreat": "闭关计时",
-    "alchemy": "炼丹炉",
-    "world": "我的洞府",
-    "profile": "个人主页",
-    "assistant": "AI 协作",
-    "online": "联机同步",
-    "library": "知识库",
-    "folders": "交付文件夹",
-    "note_new": "写笔记",
-    "upload": "上传资料",
-    "search": "全库检索",
-    "discover": "联网找论文",
-    "datasets": "数据集",
-    "experiments": "EG 实验",
-    "simulations": "LAMMPS",
-    "cultivation": "修炼记录",
-    "settings": "设置与备份",
-}
 
 app = FastAPI(title="问道科研", docs_url=None, redoc_url=None)
 app.add_middleware(
@@ -149,26 +160,40 @@ templates.env.filters["filesize"] = filesize_filter
 templates.env.filters["datecn"] = date_filter
 
 
-def configured_realm_names() -> list[str]:
+def configured_realm_names() -> dict[str, str]:
     try:
-        custom_names = json.loads(get_setting("realm_names", "[]"))
+        custom_names = json.loads(get_setting("realm_names", "{}"))
     except json.JSONDecodeError:
-        custom_names = []
-    if not isinstance(custom_names, list):
-        custom_names = []
-    return [
-        str(custom_names[index]).strip()[:30] or name
-        if index < len(custom_names)
-        else name
-        for index, (_, name, _) in enumerate(REALMS)
-    ]
+        custom_names = {}
+    return normalize_realm_labels(custom_names)
+
+
+def configured_poem_pool() -> list[str]:
+    try:
+        custom = json.loads(get_setting("ui_poem_pool", "[]"))
+    except json.JSONDecodeError:
+        custom = []
+    if isinstance(custom, list):
+        cleaned = [str(item).strip()[:120] for item in custom if str(item).strip()]
+        if cleaned:
+            return cleaned[:366]
+    legacy = get_setting("ui_home_poem", DEFAULT_POEMS[0]).strip()[:120]
+    if legacy and legacy != DEFAULT_POEMS[0]:
+        return [legacy, *DEFAULT_POEMS]
+    return list(DEFAULT_POEMS)
+
+
+def daily_poem(day: date | None = None) -> str:
+    pool = configured_poem_pool()
+    selected_day = day or date.today()
+    return pool[selected_day.toordinal() % len(pool)]
 
 
 def current_realm(xp: int) -> dict[str, Any]:
     custom_names = configured_realm_names()
     realms = [
-        (threshold, custom_names[index], description)
-        for index, (threshold, name, description) in enumerate(REALMS)
+        (stage.threshold, custom_names[stage.key], stage.description, stage.key)
+        for stage in REALM_STAGES
     ]
     current_index = 0
     for i, item in enumerate(realms):
@@ -176,19 +201,21 @@ def current_realm(xp: int) -> dict[str, Any]:
             current_index = i
         else:
             break
-    threshold, name, description = realms[current_index]
+    threshold, name, description, realm_key = realms[current_index]
     if current_index + 1 < len(realms):
-        next_threshold, next_name, _ = realms[current_index + 1]
+        next_threshold, next_name, _, next_key = realms[current_index + 1]
         progress = int((xp - threshold) / max(next_threshold - threshold, 1) * 100)
         remaining = max(next_threshold - xp, 0)
     else:
-        next_threshold, next_name, progress, remaining = threshold, "已至巅峰", 100, 0
+        next_threshold, next_name, next_key, progress, remaining = threshold, "已修成仙", realm_key, 100, 0
     return {
+        "key": realm_key,
         "name": name,
         "description": description,
         "threshold": threshold,
         "next_threshold": next_threshold,
         "next_name": next_name,
+        "next_key": next_key,
         "progress": max(0, min(progress, 100)),
         "remaining": remaining,
     }
@@ -206,12 +233,7 @@ def navigation_labels() -> dict[str, str]:
         custom = json.loads(get_setting("nav_labels", "{}"))
     except json.JSONDecodeError:
         custom = {}
-    if not isinstance(custom, dict):
-        custom = {}
-    return {
-        key: str(custom.get(key, default)).strip()[:24] or default
-        for key, default in DEFAULT_NAV_LABELS.items()
-    }
+    return normalize_nav_labels(custom)
 
 
 def infer_kind(filename: str, selected: str) -> str:
@@ -309,6 +331,12 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         _profile = _asset_conn.execute(
             "SELECT avatar_symbol FROM player_profile WHERE id=1"
         ).fetchone()
+        _workspaces = [
+            dict(row)
+            for row in _asset_conn.execute(
+                "SELECT id,name,icon,module,accent FROM workspaces WHERE active=1 ORDER BY sort_order,id"
+            )
+        ]
     base = {
         "request": request,
         "site_name": get_setting("site_name", "问道科研"),
@@ -325,11 +353,9 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "ui_density": get_setting("ui_density", "comfortable"),
         "ui_scene": get_setting("ui_scene", "warm"),
         "ui_home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
-        "ui_home_poem": get_setting(
-            "ui_home_poem",
-            "纸上得来终觉浅，绝知此事要躬行。——陆游",
-        ),
+        "ui_home_poem": daily_poem(),
         "nav_labels": navigation_labels(),
+        "nav_workspaces": _workspaces,
         "nav_avatar_symbol": (_profile["avatar_symbol"] if _profile else "道") or "道",
         "avatar_file": current_avatar_filename(),
         "hub_configured": bool(get_setting("hub_url", "").strip() and get_setting("hub_api_token", "").strip()),
@@ -438,15 +464,42 @@ def library(request: Request, kind: str = "", domain: str = "", favorite: str = 
 
 
 @app.get("/datasets", response_class=HTMLResponse, name="datasets_page")
-def datasets_page(request: Request):
+def datasets_page(request: Request, workspace: int = 0):
     with connect() as conn:
-        entries = [entry_dict(row) for row in conn.execute("SELECT * FROM entries WHERE kind='dataset' ORDER BY updated_at DESC LIMIT 300")]
-    return templates.TemplateResponse(request=request, name="datasets.html", context=context(request, "datasets", entries=entries))
+        selected = conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace,)).fetchone() if workspace else None
+        if selected:
+            rows = conn.execute(
+                "SELECT * FROM entries WHERE kind='dataset' AND workspace_id=? ORDER BY updated_at DESC LIMIT 300",
+                (workspace,),
+            )
+        else:
+            rows = conn.execute("SELECT * FROM entries WHERE kind='dataset' ORDER BY updated_at DESC LIMIT 300")
+        entries = [entry_dict(row) for row in rows]
+    return templates.TemplateResponse(
+        request=request,
+        name="datasets.html",
+        context=context(
+            request,
+            "datasets",
+            entries=entries,
+            workspace=dict(selected) if selected else None,
+            active_workspace_id=workspace or None,
+        ),
+    )
 
 
 @app.get("/upload", response_class=HTMLResponse, name="upload")
-def upload_get(request: Request):
-    return templates.TemplateResponse(request=request, name="upload.html", context=context(request, "upload"))
+def upload_get(request: Request, workspace_id: int = 0):
+    with connect() as conn:
+        workspaces = [
+            dict(row)
+            for row in conn.execute("SELECT id,name,module FROM workspaces WHERE active=1 ORDER BY sort_order,id")
+        ]
+    return templates.TemplateResponse(
+        request=request,
+        name="upload.html",
+        context=context(request, "upload", workspaces=workspaces, selected_workspace_id=workspace_id),
+    )
 
 
 @app.post("/upload", name="upload_post")
@@ -459,6 +512,7 @@ def upload_post(
     tags: str = Form(""),
     summary: str = Form(""),
     source: str = Form(""),
+    workspace_id: str = Form(""),
 ):
     files = [item for item in files if item.filename]
     if not files:
@@ -468,6 +522,11 @@ def upload_post(
     saved_paths: list[Path] = []
     with connect() as conn:
         try:
+            workspace_value = int(workspace_id) if workspace_id.isdigit() else None
+            if workspace_value and not conn.execute(
+                "SELECT id FROM workspaces WHERE id=? AND active=1", (workspace_value,)
+            ).fetchone():
+                workspace_value = None
             for upload in files:
                 original_name = upload.filename or "unnamed"
                 safe_name = secure_filename(original_name) or f"file_{uuid.uuid4().hex}"
@@ -491,7 +550,8 @@ def upload_post(
                         title, kind, domain, tags, summary, content, file_path, original_name,
                         mime_type, file_size, dataset_rows, dataset_columns, dataset_schema,
                         dataset_preview, source, created_at, updated_at, extract_status, indexed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ,workspace_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         entry_title,
@@ -513,6 +573,7 @@ def upload_post(
                         ts,
                         "ok" if extracted.get("content") else ("error" if extracted.get("error") else "no_text"),
                         ts,
+                        workspace_value,
                     ),
                 )
                 entry_id = int(cursor.lastrowid)
@@ -533,8 +594,23 @@ def upload_post(
 
 
 @app.get("/notes/new", response_class=HTMLResponse, name="note_new")
-def note_new_get(request: Request):
-    return templates.TemplateResponse(request=request, name="editor.html", context=context(request, "note_new", entry=None))
+def note_new_get(request: Request, workspace_id: int = 0):
+    with connect() as conn:
+        workspaces = [
+            dict(row)
+            for row in conn.execute("SELECT id,name FROM workspaces WHERE active=1 ORDER BY sort_order,id")
+        ]
+    return templates.TemplateResponse(
+        request=request,
+        name="editor.html",
+        context=context(
+            request,
+            "note_new",
+            entry=None,
+            workspaces=workspaces,
+            selected_workspace_id=workspace_id,
+        ),
+    )
 
 
 @app.post("/notes/new", name="note_new_post")
@@ -547,6 +623,7 @@ def note_new_post(
     summary: str = Form(""),
     content: str = Form(""),
     source: str = Form(""),
+    workspace_id: str = Form(""),
 ):
     title = title.strip()
     if not title:
@@ -556,12 +633,24 @@ def note_new_post(
         kind = "note"
     ts = now_iso()
     with connect() as conn:
+        workspace_value = int(workspace_id) if workspace_id.isdigit() else None
         cursor = conn.execute(
             """
-            INSERT INTO entries(title, kind, domain, tags, summary, content, source, created_at, updated_at, content_format)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'html')
+            INSERT INTO entries(title, kind, domain, tags, summary, content, source, workspace_id, created_at, updated_at, content_format)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'html')
             """,
-            (title, kind, domain.strip() or "未分类", tags.strip(), summary.strip(), sanitize_rich_content(content), source.strip(), ts, ts),
+            (
+                title,
+                kind,
+                domain.strip() or "未分类",
+                tags.strip(),
+                summary.strip(),
+                sanitize_rich_content(content),
+                source.strip(),
+                workspace_value,
+                ts,
+                ts,
+            ),
         )
         entry_id = int(cursor.lastrowid)
         conn.execute(
@@ -620,12 +709,22 @@ def entry_view(request: Request, entry_id: int):
 def entry_edit_get(request: Request, entry_id: int):
     with connect() as conn:
         row = conn.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
+        workspaces = [
+            dict(item)
+            for item in conn.execute("SELECT id,name FROM workspaces WHERE active=1 ORDER BY sort_order,id")
+        ]
     if not row:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(
         request=request,
         name="editor.html",
-        context=context(request, "entry", entry=entry_dict(row)),
+        context=context(
+            request,
+            "entry",
+            entry=entry_dict(row),
+            workspaces=workspaces,
+            selected_workspace_id=int(row["workspace_id"] or 0),
+        ),
     )
 
 
@@ -640,6 +739,7 @@ def entry_edit_post(
     summary: str = Form(""),
     content: str = Form(""),
     source: str = Form(""),
+    workspace_id: str = Form(""),
     file: UploadFile | None = File(None),
 ):
     with connect() as conn:
@@ -660,6 +760,7 @@ def entry_edit_post(
             "content": sanitize_rich_content(content),
             "content_format": "html",
             "source": source.strip(),
+            "workspace_id": int(workspace_id) if workspace_id.isdigit() else None,
             "updated_at": now_iso(),
         }
         old_path: Path | None = None
@@ -830,43 +931,84 @@ def entry_file(request: Request, entry_id: int, inline: int = 0):
 
 
 @app.post("/quests/new", name="quest_new")
-def quest_new(request: Request, title: str = Form(...), description: str = Form(""), xp: int = Form(15)):
+def quest_new(
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(""),
+    deliverable: str = Form(""),
+    difficulty: int = Form(1),
+    workspace_id: str = Form(""),
+):
     title = title.strip()
     if not title:
         flash(request, "任务标题不能为空。", "error")
-        return redirect("dashboard", request)
-    xp = max(1, min(xp, 200))
+        return redirect("cultivation_page", request)
+    difficulty_value = max(1, min(int(difficulty or 1), 3))
+    workspace_value = int(workspace_id) if workspace_id.isdigit() else None
+    ts = now_iso()
     with connect() as conn:
         conn.execute(
-            "INSERT INTO quests(title, description, xp, created_at) VALUES (?, ?, ?, ?)",
-            (title, description.strip(), xp, now_iso()),
+            """
+            INSERT INTO quests(
+                title,description,deliverable,difficulty,xp,status,workspace_id,created_at,updated_at
+            ) VALUES (?,?,?,?,?,'planned',?,?,?)
+            """,
+            (
+                title,
+                description.strip(),
+                deliverable.strip(),
+                difficulty_value,
+                fixed_cultivation_xp(difficulty_value),
+                workspace_value,
+                ts,
+                ts,
+            ),
         )
         conn.commit()
-    flash(request, "新任务已加入修炼清单。")
-    return RedirectResponse(url=str(request.url_for("dashboard")) + "#quests", status_code=303)
+    flash(request, "已建立独立修炼任务；它不会自动占用某一天。")
+    return RedirectResponse(url=str(request.url_for("cultivation_page")) + "#quests", status_code=303)
 
 
 @app.post("/quests/{quest_id}/toggle", name="quest_toggle")
-def quest_toggle(request: Request, quest_id: int):
+def quest_toggle(request: Request, quest_id: int, evidence: str = Form("")):
     with connect() as conn:
         quest = conn.execute("SELECT * FROM quests WHERE id=?", (quest_id,)).fetchone()
         if not quest:
             raise HTTPException(status_code=404)
         completing = not bool(quest["completed"])
+        if completing and len(evidence.strip()) < 3:
+            flash(request, "修炼任务需要先填写验收证据，再标记完成。", "error")
+            return RedirectResponse(
+                url=request.headers.get("referer") or str(request.url_for("cultivation_page")),
+                status_code=303,
+            )
         conn.execute(
-            "UPDATE quests SET completed=?, completed_at=? WHERE id=?",
-            (1 if completing else 0, now_iso() if completing else None, quest_id),
+            """
+            UPDATE quests
+            SET completed=?,status=?,evidence=?,completed_at=?,updated_at=?
+            WHERE id=?
+            """,
+            (
+                1 if completing else 0,
+                "done" if completing else "active",
+                evidence.strip() if completing else str(quest["evidence"] or ""),
+                now_iso() if completing else None,
+                now_iso(),
+                quest_id,
+            ),
         )
-        if completing:
+        if completing and not int(quest["xp_awarded"] or 0):
             conn.execute(
                 "INSERT INTO activities(action, xp, detail, created_at) VALUES (?, ?, ?, ?)",
                 ("quest", quest["xp"], f"完成任务：{quest['title']}", now_iso()),
             )
-        else:
+            conn.execute("UPDATE quests SET xp_awarded=1 WHERE id=?", (quest_id,))
+        elif not completing and int(quest["xp_awarded"] or 0):
             conn.execute(
                 "INSERT INTO activities(action, xp, detail, created_at) VALUES (?, ?, ?, ?)",
                 ("quest_reopen", -quest["xp"], f"重新开启任务：{quest['title']}", now_iso()),
             )
+            conn.execute("UPDATE quests SET xp_awarded=0 WHERE id=?", (quest_id,))
         conn.commit()
     return RedirectResponse(url=request.headers.get("referer") or str(request.url_for("dashboard")), status_code=303)
 
@@ -881,6 +1023,7 @@ def quest_delete(request: Request, quest_id: int):
 
 @app.get("/settings", response_class=HTMLResponse, name="settings_page")
 def settings_get(request: Request):
+    realm_labels = configured_realm_names()
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -894,14 +1037,13 @@ def settings_get(request: Request):
             ai_endpoint=get_setting("ai_endpoint", "http://127.0.0.1:11434/api/generate"),
             ai_model=get_setting("ai_model", "qwen2.5:7b"),
             ai_status=provider_status(),
-            realm_names_text="\n".join(configured_realm_names()),
+            realm_names_text="\n".join(
+                f"{stage.key}={realm_labels[stage.key]}" for stage in REALM_STAGES
+            ),
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
-            home_poem=get_setting(
-                "ui_home_poem",
-                "纸上得来终觉浅，绝知此事要躬行。——陆游",
-            ),
-            portable_version=get_setting("portable_version", "1.3.0"),
+            poem_pool_text="\n".join(configured_poem_pool()),
+            portable_version=get_setting("portable_version", "1.4.0"),
         ),
     )
 
@@ -918,6 +1060,7 @@ def settings_post(
     realm_names: str = Form(""),
     nav_labels: str = Form(""),
     review_popup: str = Form(""),
+    poem_pool: str = Form(""),
     home_poem: str = Form(""),
 ):
     domain_list = [x.strip() for x in domains_text.splitlines() if x.strip()]
@@ -929,12 +1072,17 @@ def settings_post(
     set_setting("ai_mode", ai_mode if ai_mode in {"offline", "ollama", "openai"} else "offline")
     set_setting("ai_endpoint", ai_endpoint.strip() or "http://127.0.0.1:11434/api/generate")
     set_setting("ai_model", ai_model.strip() or "qwen2.5:7b")
-    custom_realms = [line.strip()[:30] for line in realm_names.splitlines() if line.strip()]
-    default_realm_names = [name for _, name, _ in REALMS]
-    merged_realms = [
-        custom_realms[index] if index < len(custom_realms) else default
-        for index, default in enumerate(default_realm_names)
-    ]
+    realm_lines = [line.strip() for line in realm_names.splitlines() if line.strip()]
+    if any("=" in line for line in realm_lines):
+        merged_realms = default_realm_labels()
+        for line in realm_lines:
+            if "=" not in line:
+                continue
+            key, value = [part.strip() for part in line.split("=", 1)]
+            if key in merged_realms and value:
+                merged_realms[key] = value[:30]
+    else:
+        merged_realms = normalize_realm_labels(realm_lines)
     set_setting("realm_names", json.dumps(merged_realms, ensure_ascii=False))
     parsed_nav = dict(DEFAULT_NAV_LABELS)
     for line in nav_labels.splitlines():
@@ -945,10 +1093,15 @@ def settings_post(
             parsed_nav[key] = value[:24]
     set_setting("nav_labels", json.dumps(parsed_nav, ensure_ascii=False))
     set_setting("review_popup", "1" if review_popup == "1" else "0")
-    set_setting(
-        "ui_home_poem",
-        home_poem.strip()[:120] or "纸上得来终觉浅，绝知此事要躬行。——陆游",
-    )
+    custom_poems = [
+        line.strip()[:120]
+        for line in poem_pool.splitlines()
+        if line.strip()
+    ][:366]
+    if not custom_poems and home_poem.strip():
+        custom_poems = [home_poem.strip()[:120]]
+    set_setting("ui_poem_pool", json.dumps(custom_poems, ensure_ascii=False))
+    set_setting("ui_home_poem", custom_poems[0] if custom_poems else DEFAULT_POEMS[0])
     flash(request, "设置已保存。")
     return redirect("settings_page", request)
 
@@ -962,6 +1115,7 @@ def export_json(request: Request):
         experiments = [dict(row) for row in conn.execute("SELECT * FROM experiments ORDER BY id")]
         simulations = [dict(row) for row in conn.execute("SELECT * FROM simulations ORDER BY id")]
         simulation_files = [dict(row) for row in conn.execute("SELECT * FROM simulation_files ORDER BY id")]
+        workspaces = [dict(row) for row in conn.execute("SELECT * FROM workspaces ORDER BY sort_order,id")]
         research_tracks = [dict(row) for row in conn.execute("SELECT * FROM research_tracks ORDER BY sort_order,id")]
         research_plan_items = [dict(row) for row in conn.execute("SELECT * FROM research_plan_items ORDER BY track_id,sort_order,id")]
         research_folders = [dict(row) for row in conn.execute("SELECT * FROM research_folders ORDER BY id")]
@@ -982,6 +1136,7 @@ def export_json(request: Request):
     payload = {
         "entries": entries, "activities": activities, "quests": quests, "experiments": experiments,
         "simulations": simulations, "simulation_files": simulation_files,
+        "workspaces": workspaces,
         "research_tracks": research_tracks, "research_plan_items": research_plan_items,
         "research_folders": research_folders, "research_folder_files": research_folder_files,
         "mission_deliveries": mission_deliveries, "mission_delivery_files": mission_delivery_files,
@@ -1070,14 +1225,19 @@ def knowledge_export():
                 "FROM review_sources ORDER BY source_date DESC,id"
             )
         ]
+        workspaces = [
+            dict(row)
+            for row in conn.execute("SELECT * FROM workspaces ORDER BY sort_order,id")
+        ]
     exported_at = now_iso()
     manifest = {
-        "format": "research-cultivation-knowledge-v1",
+        "format": "research-cultivation-knowledge-v2",
         "exported_at": exported_at,
         "counts": {
             "entries": len(entries),
             "experiments": len(experiments),
             "simulations": len(simulations),
+            "workspaces": len(workspaces),
             "review_sources": len(review_sources),
         },
     }
@@ -1090,7 +1250,7 @@ def knowledge_export():
 - `entries/`：每条知识记录一份 Markdown；
 - `attachments/`：知识条目的原始附件；
 - `knowledge.json`：完整结构化索引，便于以后用 Python、Excel 或其他软件处理；
-- `records/`：实验、模拟和复盘关键文本索引；
+- `records/`：个人工作区、实验、模拟和复盘关键文本索引；
 - `manifest.json`：格式版本与数量校验。
 
 本包不包含灵石、游戏资产、API 密钥、联机 Token 或软件程序。需要完整恢复整个系统时，请在网站“设置与备份”中下载完整备份。
@@ -1132,6 +1292,10 @@ def knowledge_export():
             ),
         )
         zf.writestr(
+            "records/workspaces.json",
+            json.dumps(workspaces, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
             "records/experiments.json",
             json.dumps(experiments, ensure_ascii=False, indent=2),
         )
@@ -1168,7 +1332,7 @@ def backup(request: Request):
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "1.3.0"), "created_at": now_iso(), "database": DB_PATH.name}
+    manifest = {"version": get_setting("portable_version", "1.4.0"), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1276,10 +1440,14 @@ def entry_reindex(request: Request, entry_id: int):
 
 
 @app.get("/experiments", response_class=HTMLResponse, name="experiments_page")
-def experiments_page(request: Request, edit: int = 0, status: str = ""):
+def experiments_page(request: Request, edit: int = 0, status: str = "", workspace: int = 0):
     with connect() as conn:
         params: list[Any] = []
         sql = "SELECT * FROM experiments WHERE 1=1"
+        selected_workspace = conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace,)).fetchone() if workspace else None
+        if selected_workspace:
+            sql += " AND workspace_id=?"
+            params.append(workspace)
         if status:
             sql += " AND status=?"
             params.append(status)
@@ -1288,7 +1456,20 @@ def experiments_page(request: Request, edit: int = 0, status: str = ""):
         edit_row = conn.execute("SELECT * FROM experiments WHERE id=?", (edit,)).fetchone() if edit else None
         editing = dict(edit_row) if edit_row else None
         docs = [dict(row) for row in conn.execute("SELECT id,title FROM entries ORDER BY updated_at DESC LIMIT 300")]
-    return templates.TemplateResponse(request=request, name="experiments.html", context=context(request, "experiments", items=items, editing=editing, selected_status=status, documents=docs))
+    return templates.TemplateResponse(
+        request=request,
+        name="experiments.html",
+        context=context(
+            request,
+            "experiments",
+            items=items,
+            editing=editing,
+            selected_status=status,
+            documents=docs,
+            workspace=dict(selected_workspace) if selected_workspace else None,
+            active_workspace_id=workspace or None,
+        ),
+    )
 
 
 @app.post("/experiments/save", name="experiment_save")
@@ -1298,24 +1479,26 @@ def experiment_save(
     eg_content: str = Form(""), water_cement_ratio: str = Form(""), compaction_pressure: str = Form(""), thickness_cm: str = Form(""), area_cm2: str = Form(""),
     electrolyte: str = Form(""), voltage_min: str = Form(""), voltage_max: str = Form(""), scan_rate: str = Form(""), specific_capacitance: str = Form(""),
     conductivity: str = Form(""), compressive_strength: str = Form(""), hypothesis: str = Form(""), observations: str = Form(""), conclusion: str = Form(""),
-    next_step: str = Form(""), tags: str = Form(""), attachment_entry_id: str = Form(""),
+    next_step: str = Form(""), tags: str = Form(""), attachment_entry_id: str = Form(""), workspace_id: str = Form(""),
 ):
     sample_id = sample_id.strip()
     if not sample_id:
         flash(request, "样品编号不能为空。", "error")
         return redirect("experiments_page", request)
+    workspace_value = int(workspace_id) if workspace_id.isdigit() else None
     values = (
         sample_id, experiment_date or None, title.strip(), status, _number(eg_content), _number(water_cement_ratio), _number(compaction_pressure), _number(thickness_cm), _number(area_cm2),
         electrolyte.strip(), _number(voltage_min), _number(voltage_max), _number(scan_rate), _number(specific_capacitance), _number(conductivity), _number(compressive_strength),
-        hypothesis.strip(), observations.strip(), conclusion.strip(), next_step.strip(), tags.strip(), int(attachment_entry_id) if attachment_entry_id.isdigit() else None, now_iso(),
+        hypothesis.strip(), observations.strip(), conclusion.strip(), next_step.strip(), tags.strip(), int(attachment_entry_id) if attachment_entry_id.isdigit() else None,
+        workspace_value, now_iso(),
     )
     with connect() as conn:
         try:
             if experiment_id:
-                conn.execute("""UPDATE experiments SET sample_id=?,experiment_date=?,title=?,status=?,eg_content=?,water_cement_ratio=?,compaction_pressure=?,thickness_cm=?,area_cm2=?,electrolyte=?,voltage_min=?,voltage_max=?,scan_rate=?,specific_capacitance=?,conductivity=?,compressive_strength=?,hypothesis=?,observations=?,conclusion=?,next_step=?,tags=?,attachment_entry_id=?,updated_at=? WHERE id=?""", values + (experiment_id,))
+                conn.execute("""UPDATE experiments SET sample_id=?,experiment_date=?,title=?,status=?,eg_content=?,water_cement_ratio=?,compaction_pressure=?,thickness_cm=?,area_cm2=?,electrolyte=?,voltage_min=?,voltage_max=?,scan_rate=?,specific_capacitance=?,conductivity=?,compressive_strength=?,hypothesis=?,observations=?,conclusion=?,next_step=?,tags=?,attachment_entry_id=?,workspace_id=?,updated_at=? WHERE id=?""", values + (experiment_id,))
                 action, xp = "experiment_update", 4
             else:
-                conn.execute("""INSERT INTO experiments(sample_id,experiment_date,title,status,eg_content,water_cement_ratio,compaction_pressure,thickness_cm,area_cm2,electrolyte,voltage_min,voltage_max,scan_rate,specific_capacitance,conductivity,compressive_strength,hypothesis,observations,conclusion,next_step,tags,attachment_entry_id,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", values + (now_iso(),))
+                conn.execute("""INSERT INTO experiments(sample_id,experiment_date,title,status,eg_content,water_cement_ratio,compaction_pressure,thickness_cm,area_cm2,electrolyte,voltage_min,voltage_max,scan_rate,specific_capacitance,conductivity,compressive_strength,hypothesis,observations,conclusion,next_step,tags,attachment_entry_id,workspace_id,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", values + (now_iso(),))
                 action, xp = "experiment_create", 28
             conn.execute("INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)", (action, xp, f"EG实验：{sample_id}", now_iso()))
             conn.commit()
@@ -1324,23 +1507,31 @@ def experiment_save(
             flash(request, "样品编号已存在，请换一个编号。", "error")
             return redirect("experiments_page", request)
     flash(request, "实验记录已保存。")
-    return redirect("experiments_page", request)
+    url = str(request.url_for("experiments_page"))
+    return RedirectResponse(f"{url}?workspace={workspace_value}" if workspace_value else url, status_code=303)
 
 
 @app.post("/experiments/{experiment_id}/delete", name="experiment_delete")
 def experiment_delete(request: Request, experiment_id: int):
     with connect() as conn:
-        row = conn.execute("SELECT sample_id FROM experiments WHERE id=?", (experiment_id,)).fetchone()
+        row = conn.execute("SELECT sample_id,workspace_id FROM experiments WHERE id=?", (experiment_id,)).fetchone()
         conn.execute("DELETE FROM experiments WHERE id=?", (experiment_id,))
         conn.commit()
     flash(request, f"已删除实验记录：{row['sample_id'] if row else experiment_id}")
-    return redirect("experiments_page", request)
+    url = str(request.url_for("experiments_page"))
+    return RedirectResponse(f"{url}?workspace={row['workspace_id']}" if row and row["workspace_id"] else url, status_code=303)
 
 
 @app.get("/experiments/export.csv", name="experiments_export")
-def experiments_export():
+def experiments_export(workspace: int = 0):
     with connect() as conn:
-        rows = [dict(row) for row in conn.execute("SELECT * FROM experiments ORDER BY experiment_date, id")]
+        if workspace:
+            query = conn.execute(
+                "SELECT * FROM experiments WHERE workspace_id=? ORDER BY experiment_date,id", (workspace,)
+            )
+        else:
+            query = conn.execute("SELECT * FROM experiments ORDER BY experiment_date,id")
+        rows = [dict(row) for row in query]
     output = io.StringIO()
     if rows:
         writer = csv.DictWriter(output, fieldnames=list(rows[0].keys()))
@@ -1351,20 +1542,38 @@ def experiments_export():
 
 
 @app.get("/simulations", response_class=HTMLResponse, name="simulations_page")
-def simulations_page(request: Request):
+def simulations_page(request: Request, workspace: int = 0):
     with connect() as conn:
         items = []
-        for row in conn.execute("SELECT * FROM simulations ORDER BY updated_at DESC"):
+        selected_workspace = conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace,)).fetchone() if workspace else None
+        if selected_workspace:
+            rows = conn.execute(
+                "SELECT * FROM simulations WHERE workspace_id=? ORDER BY updated_at DESC", (workspace,)
+            )
+        else:
+            rows = conn.execute("SELECT * FROM simulations ORDER BY updated_at DESC")
+        for row in rows:
             item = dict(row); item["summary"] = parse_json(item.get("summary_json", "{}"), {})
             item["files"] = [dict(x) for x in conn.execute("SELECT * FROM simulation_files WHERE simulation_id=? ORDER BY role,original_name", (row["id"],))]
             items.append(item)
-    return templates.TemplateResponse(request=request, name="simulations.html", context=context(request, "simulations", items=items))
+    return templates.TemplateResponse(
+        request=request,
+        name="simulations.html",
+        context=context(
+            request,
+            "simulations",
+            items=items,
+            workspace=dict(selected_workspace) if selected_workspace else None,
+            active_workspace_id=workspace or None,
+        ),
+    )
 
 
 @app.post("/simulations/new", name="simulation_new")
 def simulation_new(
     request: Request, case_name: str = Form(...), project_name: str = Form(""), ensemble: str = Form(""), forcefield: str = Form(""),
-    temperature: str = Form(""), timestep: str = Form(""), run_command: str = Form(""), notes: str = Form(""), tags: str = Form(""), files: list[UploadFile] = File(default=[]),
+    temperature: str = Form(""), timestep: str = Form(""), run_command: str = Form(""), notes: str = Form(""), tags: str = Form(""),
+    workspace_id: str = Form(""), files: list[UploadFile] = File(default=[]),
 ):
     case_name = case_name.strip()
     if not case_name:
@@ -1389,9 +1598,10 @@ def simulation_new(
         if categorized["logs"]:
             parsed = parse_lammps_log(categorized["logs"][0])
         ts = now_iso()
+        workspace_value = int(workspace_id) if workspace_id.isdigit() else None
         with connect() as conn:
-            cur = conn.execute("""INSERT INTO simulations(case_name,project_name,status,engine_version,ensemble,forcefield,atoms,steps,temperature,timestep,last_step,last_temp,last_etotal,warnings,errors,run_command,notes,tags,folder_path,summary_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-                case_name, project_name.strip(), parsed.get("status", "NEW"), parsed.get("lammps_version", ""), ensemble.strip(), forcefield.strip(), parsed.get("atoms"), parsed.get("steps"), _number(temperature), _number(timestep), parsed.get("last_step"), parsed.get("last_temp"), parsed.get("last_etotal"), parsed.get("warnings", 0), parsed.get("errors", 0), run_command.strip(), notes.strip(), tags.strip(), folder_name, json.dumps(parsed, ensure_ascii=False), ts, ts,
+            cur = conn.execute("""INSERT INTO simulations(case_name,project_name,status,engine_version,ensemble,forcefield,atoms,steps,temperature,timestep,last_step,last_temp,last_etotal,warnings,errors,run_command,notes,tags,folder_path,summary_json,workspace_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                case_name, project_name.strip(), parsed.get("status", "NEW"), parsed.get("lammps_version", ""), ensemble.strip(), forcefield.strip(), parsed.get("atoms"), parsed.get("steps"), _number(temperature), _number(timestep), parsed.get("last_step"), parsed.get("last_temp"), parsed.get("last_etotal"), parsed.get("warnings", 0), parsed.get("errors", 0), run_command.strip(), notes.strip(), tags.strip(), folder_name, json.dumps(parsed, ensure_ascii=False), workspace_value, ts, ts,
             ))
             sim_id = int(cur.lastrowid)
             role_map = {id(path): role for role, paths in categorized.items() for path in paths}
@@ -1404,28 +1614,42 @@ def simulation_new(
         flash(request, f"模拟案例归档失败：{exc}", "error")
         return redirect("simulations_page", request)
     flash(request, "LAMMPS案例已归档并完成日志解析。")
-    return redirect("simulations_page", request)
+    url = str(request.url_for("simulations_page"))
+    return RedirectResponse(f"{url}?workspace={workspace_value}" if workspace_value else url, status_code=303)
 
 
 @app.post("/simulations/{simulation_id}/update", name="simulation_update")
-def simulation_update(request: Request, simulation_id: int, status: str = Form("NEW"), notes: str = Form(""), tags: str = Form("")):
+def simulation_update(
+    request: Request,
+    simulation_id: int,
+    status: str = Form("NEW"),
+    notes: str = Form(""),
+    tags: str = Form(""),
+    workspace_id: str = Form(""),
+):
+    workspace_value = int(workspace_id) if workspace_id.isdigit() else None
     with connect() as conn:
-        conn.execute("UPDATE simulations SET status=?,notes=?,tags=?,updated_at=? WHERE id=?", (status, notes.strip(), tags.strip(), now_iso(), simulation_id))
+        conn.execute(
+            "UPDATE simulations SET status=?,notes=?,tags=?,workspace_id=?,updated_at=? WHERE id=?",
+            (status, notes.strip(), tags.strip(), workspace_value, now_iso(), simulation_id),
+        )
         conn.commit()
     flash(request, "模拟案例已更新。")
-    return redirect("simulations_page", request)
+    url = str(request.url_for("simulations_page"))
+    return RedirectResponse(f"{url}?workspace={workspace_value}" if workspace_value else url, status_code=303)
 
 
 @app.post("/simulations/{simulation_id}/delete", name="simulation_delete")
 def simulation_delete(request: Request, simulation_id: int):
     with connect() as conn:
-        row = conn.execute("SELECT folder_path,case_name FROM simulations WHERE id=?", (simulation_id,)).fetchone()
+        row = conn.execute("SELECT folder_path,case_name,workspace_id FROM simulations WHERE id=?", (simulation_id,)).fetchone()
         conn.execute("DELETE FROM simulations WHERE id=?", (simulation_id,))
         conn.commit()
     if row:
         shutil.rmtree(SIMULATION_DIR / row["folder_path"], ignore_errors=True)
     flash(request, "模拟案例已删除。")
-    return redirect("simulations_page", request)
+    url = str(request.url_for("simulations_page"))
+    return RedirectResponse(f"{url}?workspace={row['workspace_id']}" if row and row["workspace_id"] else url, status_code=303)
 
 
 @app.get("/simulations/{simulation_id}/files/{file_id}", name="simulation_file")
@@ -1452,10 +1676,58 @@ def cultivation_page(request: Request):
         total_assets = totals["total"] + exp_total + sim_total
         quality_points = totals["tagged"] * 2 + totals["summarized"] * 2 + totals["analyzed"] * 4 + exp_total * 5 + sim_total * 5
         quality = min(100, round(quality_points / max(total_assets * 5, 1) * 100))
-        quests = [dict(row) for row in conn.execute("SELECT * FROM quests ORDER BY completed,due_date,created_at DESC")]
+        quests = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT q.*,w.name workspace_name,
+                    (SELECT COUNT(*) FROM daily_missions m WHERE m.quest_id=q.id) linked_total,
+                    (SELECT COALESCE(SUM(m.completed),0) FROM daily_missions m WHERE m.quest_id=q.id) linked_done
+                FROM quests q
+                LEFT JOIN workspaces w ON w.id=q.workspace_id
+                ORDER BY q.completed,q.difficulty DESC,q.updated_at DESC,q.id DESC
+                """
+            )
+        ]
+        workspaces = [
+            dict(row)
+            for row in conn.execute("SELECT id,name FROM workspaces WHERE active=1 ORDER BY sort_order,id")
+        ]
         ach = achievements(conn)
         streak = activity_streak(conn)
-    return templates.TemplateResponse(request=request, name="cultivation.html", context=context(request, "cultivation", xp=xp, realm=current_realm(xp), streak=streak, activity_rows=activity_rows, totals=totals, exp_total=exp_total, sim_total=sim_total, quality=quality, quests=quests, achievements=ach))
+    realm = current_realm(xp)
+    labels = configured_realm_names()
+    realm_path = [
+        {
+            "key": stage.key,
+            "name": labels[stage.key],
+            "threshold": stage.threshold,
+            "description": stage.description,
+            "state": "current" if stage.key == realm["key"] else ("passed" if xp >= stage.threshold else "locked"),
+        }
+        for stage in REALM_STAGES
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="cultivation.html",
+        context=context(
+            request,
+            "cultivation",
+            xp=xp,
+            realm=realm,
+            realm_path=realm_path,
+            streak=streak,
+            activity_rows=activity_rows,
+            totals=totals,
+            exp_total=exp_total,
+            sim_total=sim_total,
+            quality=quality,
+            quests=quests,
+            workspaces=workspaces,
+            difficulty_labels=CULTIVATION_DIFFICULTY_LABELS,
+            achievements=ach,
+        ),
+    )
 
 
 
@@ -1490,7 +1762,7 @@ def portable_export():
                 zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "1.3.0"),
+                "version": get_setting("portable_version", "1.4.0"),
                 "created_at": now_iso(),
                 "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
             }
@@ -1903,6 +2175,7 @@ from features.game_world import register_game_routes
 from features.online_sync import register_online_routes
 from features.review import register_review_routes
 from features.alchemy import register_alchemy_routes
+from features.workspaces import register_workspace_routes
 
 register_daily_routes(app, templates, context, flash)
 register_assistant_routes(app, templates, context)
@@ -1913,4 +2186,5 @@ register_game_routes(app, templates, context, flash, current_realm)
 register_online_routes(app, templates, context, flash)
 register_review_routes(app, templates, context, flash)
 register_alchemy_routes(app, templates, context, flash)
+register_workspace_routes(app, templates, context, flash, entry_dict)
 register_backup_jobs(app)

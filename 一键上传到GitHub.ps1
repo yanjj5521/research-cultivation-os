@@ -3,7 +3,7 @@ $RepoUrl = 'https://github.com/yanjj5521/research-cultivation-os.git'
 $Branch = 'main'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host '问道科研 v1.3 - GitHub 一键上传' -ForegroundColor Cyan
+Write-Host '问道科研 v1.4 - GitHub 一键上传' -ForegroundColor Cyan
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host '未检测到 Git。' -ForegroundColor Yellow
@@ -59,7 +59,7 @@ $changes = git status --porcelain
 if (-not $changes) {
     Write-Host '没有需要上传的新改动。' -ForegroundColor Green
 } else {
-    git commit -m 'Publish Research Cultivation OS v1.3 source'
+    git commit -m 'Publish Research Cultivation OS v1.4 source'
 }
 
 Write-Host '即将推送到 GitHub。首次操作可能弹出浏览器登录窗口。' -ForegroundColor Yellow

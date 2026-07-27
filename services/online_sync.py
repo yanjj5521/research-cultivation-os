@@ -6,9 +6,10 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from db import connect, get_setting, now_iso, set_setting
+from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
 from services.economy import balances as local_balances
 from services.game_world import ARTIFACTS, BUILDINGS
+from services.progression import normalize_realm_labels
 
 
 def queue_event(conn, event_type: str, payload: dict[str, Any] | None = None, event_uuid: str | None = None) -> str:
@@ -31,7 +32,7 @@ def _request_json(method: str, url: str, token: str, body: dict[str, Any] | None
         url,
         data=data,
         method=method,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.3"},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/1.4"},
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
@@ -110,15 +111,25 @@ def apply_state(conn, state: dict[str, Any]) -> None:
                 "INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (setting_key, str(theme[source])),
             )
-    if isinstance(theme.get("realm_names"), list):
+    if isinstance(theme.get("poem_pool"), list):
+        conn.execute(
+            "INSERT INTO settings(key,value) VALUES ('ui_poem_pool',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (
+                json.dumps(
+                    [str(item).strip()[:120] for item in theme["poem_pool"] if str(item).strip()][:366],
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+    if isinstance(theme.get("realm_names"), (list, dict)):
         conn.execute(
             "INSERT INTO settings(key,value) VALUES ('realm_names',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (json.dumps(theme["realm_names"], ensure_ascii=False),),
+            (json.dumps(normalize_realm_labels(theme["realm_names"]), ensure_ascii=False),),
         )
     if isinstance(theme.get("nav_labels"), dict):
         conn.execute(
             "INSERT INTO settings(key,value) VALUES ('nav_labels',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (json.dumps(theme["nav_labels"], ensure_ascii=False),),
+            (json.dumps(normalize_nav_labels(theme["nav_labels"]), ensure_ascii=False),),
         )
     _cache(conn, "hub_state", state)
     if state.get("latest_release") is not None:

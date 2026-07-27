@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}数据炼丹房 · {{ site_name }}{% endblock %}
+{% block title %}{{ workspace.name if workspace else '数据集' }} · {{ site_name }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><span class="eyebrow">Dataset Registry</span><h1>数据炼丹房</h1><p>保存机器学习数据集、实验表格与变量说明，原始文件和可检索元数据同时保留。</p></div>
-  <a class="primary-button" href="{{ url_for('upload') }}">↑ 上传数据集</a>
+  <div><span class="eyebrow">Dataset Workspace</span><h1>{{ workspace.icon ~ ' ' ~ workspace.name if workspace else '数据集' }}</h1><p>{{ workspace.description if workspace else '保存机器学习数据集、实验表格与变量说明，原始文件和可检索元数据同时保留。' }}</p></div>
+  <div class="page-actions"><a class="soft-button" href="{{ url_for('workspaces_page') }}">管理工作区</a><a class="primary-button" href="{{ url_for('upload') }}{% if workspace %}?workspace_id={{ workspace.id }}{% endif %}">↑ 上传数据集</a></div>
 </div>
 {% if entries %}
 <div class="dataset-grid">
@@ -17,6 +17,6 @@
 {% endfor %}
 </div>
 {% else %}
-<div class="empty-state panel"><div>📊</div><h3>还没有数据集档案</h3><p>先上传 CSV、XLSX 或 JSON。系统会自动读取表头、行列数和小样预览。</p><a class="primary-button" href="{{ url_for('upload') }}">建立第一个数据集</a></div>
+<div class="empty-state panel"><div>📊</div><h3>还没有数据集档案</h3><p>先上传 CSV、XLSX 或 JSON。系统会自动读取表头、行列数和小样预览。</p><a class="primary-button" href="{{ url_for('upload') }}{% if workspace %}?workspace_id={{ workspace.id }}{% endif %}">建立第一个数据集</a></div>
 {% endif %}
 {% endblock %}

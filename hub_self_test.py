@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import hub_app
-from hub_db import connect_hub, init_hub_db
+from hub_db import connect_hub, get_hub_setting, init_hub_db
 
 
 def main() -> None:
@@ -25,6 +25,8 @@ def main() -> None:
             failures.append("missing tables: " + ", ".join(missing))
         if conn.execute("SELECT COUNT(*) n FROM hub_users WHERE role='admin'").fetchone()["n"] != 1:
             failures.append("admin account not initialized")
+        if get_hub_setting(conn, "version") != "1.4.0":
+            failures.append("hub version was not migrated to 1.4.0")
     if failures:
         print("HUB SELF TEST FAILED")
         for item in failures:

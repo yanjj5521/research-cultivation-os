@@ -16,6 +16,7 @@
     <label><span>自定义标题</span><input name="title" placeholder="仅上传单个文件时生效；留空则用文件名"></label>
     <label><span>资料类型</span><select name="kind"><option value="auto">自动识别</option>{% for key, meta in kinds.items() %}<option value="{{ key }}">{{ meta[1] }} {{ meta[0] }}</option>{% endfor %}</select></label>
     <label><span>研究领域</span><select name="domain">{% for item in domains %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></label>
+    <label><span>放入工作区（可选）</span><select name="workspace_id"><option value="">不指定</option>{% for workspace in workspaces %}<option value="{{ workspace.id }}" {% if selected_workspace_id==workspace.id %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</select></label>
     <label><span>标签</span><input name="tags" placeholder="例如：EG, CV, 导电网络, 必读"></label>
     <label class="full"><span>来源 / DOI / 项目路径</span><input name="source" placeholder="例如 DOI、论文链接、实验批次或代码仓库路径"></label>
     <label class="full"><span>为什么要保存它</span><textarea name="summary" rows="4" placeholder="一句话即可：它解决什么问题、与我的研究有什么关系。可以暂时留空。"></textarea></label>
