@@ -647,7 +647,7 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "2.0.0",
+            "portable_version": "2.0.1",
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
@@ -708,7 +708,7 @@ def init_db() -> None:
             "UPDATE settings SET value=? WHERE key='nav_labels'",
             (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
         )
-        conn.execute("UPDATE settings SET value='2.0.0' WHERE key='portable_version'")
+        conn.execute("UPDATE settings SET value='2.0.1' WHERE key='portable_version'")
         ts = now_iso()
         default_workspaces = (
             ("eg-lab", "EG 实验", "验", "experiments", "配比、成型、电化学与力学实验台账", "clay", 10),

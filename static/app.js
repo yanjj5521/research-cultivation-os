@@ -236,16 +236,5 @@
     document.addEventListener('visibilitychange', render);
   }
 
-  document.querySelectorAll('[data-recall-card]').forEach(card => {
-    const toggle = card.querySelector('[data-recall-toggle]');
-    const answer = card.querySelector('[data-recall-answer]');
-    toggle?.addEventListener('click', () => {
-      const revealed = !card.classList.contains('revealed');
-      card.classList.toggle('revealed', revealed);
-      if (answer) answer.hidden = !revealed;
-      toggle.textContent = revealed ? '收起线索，再想一次' : '想过了，揭示线索';
-    });
-  });
-
   setTimeout(() => document.querySelectorAll('.flash').forEach(el => el.remove()), 4200);
 })();

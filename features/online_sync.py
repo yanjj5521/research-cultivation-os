@@ -93,7 +93,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 last_error=cached_value("last_sync_error", {}),
                 hub_state=cached_value("hub_state", {}),
                 latest_release=cached_value("latest_release", None),
-                local_version=get_setting("portable_version", "2.0.0"),
+                local_version=get_setting("portable_version", "2.0.1"),
             ),
         )
 
@@ -107,7 +107,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         )
         return {
             "application": "Research Cultivation OS",
-            "local_version": get_setting("portable_version", "2.0.0"),
+            "local_version": get_setting("portable_version", "2.0.1"),
             "active_backend": backend.capabilities.as_dict(),
             "available_backends": all_backend_capabilities(),
             "data_policy": {

@@ -278,13 +278,13 @@ def init_hub_db() -> None:
         )
         defaults = {
             "site_name": "问道科研 · 同行会",
-            "version": "2.0.0",
+            "version": "2.0.1",
             "registration_mode": "invite",
             "max_members": "10",
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO hub_settings(key,value) VALUES (?,?)", (key, value))
-        conn.execute("UPDATE hub_settings SET value='2.0.0' WHERE key='version'")
+        conn.execute("UPDATE hub_settings SET value='2.0.1' WHERE key='version'")
         admin = conn.execute("SELECT id FROM hub_users WHERE role='admin' LIMIT 1").fetchone()
         if not admin:
             password = secrets.token_urlsafe(10)

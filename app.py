@@ -40,7 +40,7 @@ from db import (
 )
 from extractors import extract_file
 from research_tools import find_lammps_files, offline_paper_summary, parse_lammps_log, summary_to_markdown, unpack_lammps_bundle
-from services.economy import balances as asset_balances, mission_rewards
+from services.economy import balances as asset_balances
 from services.backups import register_backup_jobs
 from services.ai_provider import provider_status
 from services.profile_media import PROFILE_DIR, current_avatar_filename
@@ -317,18 +317,6 @@ def plain_excerpt(value: str | None, limit: int = 220) -> str:
     return text[: max(1, limit - 1)].rstrip("，。；;：: ") + "…"
 
 
-def daily_learning_prompt(kind: str, title: str) -> str:
-    prompts = {
-        "document": "合上原文：这篇论文最关键的证据是什么，它不能证明什么？",
-        "note": "不看笔记：用自己的话复述核心判断，再说出一个适用边界。",
-        "question": "先别看旧答案：你现在会怎样回答这个科学问题？",
-        "failure": "回想这次失败：哪个早期信号本可以让你更快发现问题？",
-        "sop": "不看步骤：最容易被忽略、却会改变结果的一步是什么？",
-        "idea": "把这条灵感改写成一个可测量、可证伪的判断。",
-    }
-    return prompts.get(kind, f"不打开“{title}”，先说出你还记得的一个关键点。")
-
-
 RICH_TAGS = ["p","br","strong","b","em","i","u","ul","ol","li","h2","h3","blockquote","a","img","code","pre","hr"]
 RICH_ATTRS = {"a": ["href","title","target"], "img": ["src","alt","title"]}
 
@@ -392,8 +380,6 @@ def redirect(name: str, request: Request, **path_params: Any) -> RedirectRespons
 @app.get("/", response_class=HTMLResponse, name="dashboard")
 def dashboard(request: Request):
     with connect() as conn:
-        today = date.today()
-        today_iso = today.isoformat()
         stats = {
             "total": conn.execute("SELECT COUNT(*) n FROM entries").fetchone()["n"],
             "documents": conn.execute("SELECT COUNT(*) n FROM entries WHERE kind='document'").fetchone()["n"],
@@ -402,162 +388,11 @@ def dashboard(request: Request):
             "experiments": conn.execute("SELECT COUNT(*) n FROM entries WHERE kind='experiment'").fetchone()["n"],
         }
         profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
-        active_plan = conn.execute("SELECT * FROM study_plans WHERE status='active' ORDER BY updated_at DESC LIMIT 1").fetchone()
-        today_missions = []
-        today_progress = 0
-        required_total = 0
-        required_done = 0
-        next_mission = None
-        reward_preview: dict[str, int] = {}
-        if active_plan:
-            today_missions = [dict(row) for row in conn.execute(
-                "SELECT * FROM daily_missions WHERE plan_id=? AND day_index=? ORDER BY optional,sort_order,id",
-                (active_plan["id"], active_plan["current_day"]),
-            )]
-            required = [m for m in today_missions if not m["optional"]]
-            required_total = len(required)
-            required_done = sum(int(m["completed"]) for m in required)
-            today_progress = round(required_done / required_total * 100) if required_total else 0
-            next_mission = next((m for m in required if not m["completed"]), None)
-            if next_mission is None:
-                next_mission = next((m for m in today_missions if not m["completed"]), None)
-            if next_mission:
-                reward_preview = mission_rewards(next_mission)
-
         xp = total_xp(conn)
         realm = current_realm(xp)
         streak = activity_streak(conn)
 
-        paper_pool = [
-            entry_dict(row)
-            for row in conn.execute(
-                """
-                SELECT * FROM entries
-                WHERE status='active' AND kind='document'
-                ORDER BY favorite DESC, updated_at DESC, id DESC
-                LIMIT 18
-                """
-            )
-        ]
-        focus_paper = paper_pool[(today.toordinal() + 3) % len(paper_pool)] if paper_pool else None
-        if focus_paper:
-            focus_paper["preview_text"] = plain_excerpt(
-                focus_paper.get("summary") or focus_paper.get("content"),
-                210,
-            )
-
-        learning_pool = [
-            entry_dict(row)
-            for row in conn.execute(
-                """
-                SELECT * FROM entries
-                WHERE status='active'
-                  AND kind IN ('document','note','question','failure','sop','idea')
-                  AND length(trim(COALESCE(NULLIF(summary,''),content,''))) >= 16
-                ORDER BY favorite DESC, updated_at DESC, id DESC
-                LIMIT 36
-                """
-            )
-        ]
-        learning_entry = learning_pool[(today.toordinal() + 11) % len(learning_pool)] if learning_pool else None
-        learning_card = None
-        if learning_entry:
-            learning_card = {
-                "id": learning_entry["id"],
-                "title": learning_entry["title"],
-                "kind": learning_entry["kind"],
-                "kind_label": learning_entry["kind_label"],
-                "domain": learning_entry["domain"],
-                "question": daily_learning_prompt(learning_entry["kind"], learning_entry["title"]),
-                "answer": plain_excerpt(
-                    learning_entry.get("summary") or learning_entry.get("content"),
-                    250,
-                ),
-            }
-
-        start_day = today - timedelta(days=6)
-        activity_counts = {
-            row["day"]: int(row["n"])
-            for row in conn.execute(
-                """
-                SELECT substr(created_at,1,10) AS day,COUNT(*) AS n
-                FROM activities
-                WHERE substr(created_at,1,10)>=?
-                GROUP BY substr(created_at,1,10)
-                """,
-                (start_day.isoformat(),),
-            )
-        }
-        weekday_labels = "一二三四五六日"
-        habit_week = []
-        for offset in range(7):
-            day_value = start_day + timedelta(days=offset)
-            count = activity_counts.get(day_value.isoformat(), 0)
-            habit_week.append(
-                {
-                    "day": weekday_labels[day_value.weekday()],
-                    "date": day_value.strftime("%m/%d"),
-                    "count": count,
-                    "active": count > 0,
-                    "today": day_value == today,
-                }
-            )
-        active_days_7 = sum(int(item["active"]) for item in habit_week)
-        habit_message = (
-            "七日圆满，节律已经很稳"
-            if active_days_7 == 7
-            else "正在形成稳定的启动线索"
-            if active_days_7 >= 4
-            else "节律已点亮，继续留下小胜"
-            if active_days_7 >= 2
-            else "今天先留下第一份科研痕迹"
-        )
-
-        today_xp = int(
-            conn.execute(
-                "SELECT COALESCE(SUM(xp),0) n FROM activities WHERE substr(created_at,1,10)=?",
-                (today_iso,),
-            ).fetchone()["n"]
-            or 0
-        )
-        earned_assets = {
-            row["asset_key"]: int(row["n"])
-            for row in conn.execute(
-                """
-                SELECT asset_key,COALESCE(SUM(amount),0) n
-                FROM asset_transactions
-                WHERE substr(created_at,1,10)=? AND amount>0
-                GROUP BY asset_key
-                """,
-                (today_iso,),
-            )
-        }
-        due_review_count = int(
-            conn.execute(
-                "SELECT COUNT(*) n FROM review_answers WHERE next_due IS NOT NULL AND next_due<=?",
-                (today_iso,),
-            ).fetchone()["n"]
-        )
-        review_completed_today = bool(
-            conn.execute(
-                """
-                SELECT 1 FROM review_sessions
-                WHERE mode='yesterday' AND status='completed'
-                  AND substr(completed_at,1,10)=?
-                LIMIT 1
-                """,
-                (today_iso,),
-            ).fetchone()
-        )
         pending_review = pending_review_group(conn) if get_setting("review_popup", "1") == "1" else None
-        loop_step = 3 if review_completed_today else 2 if required_total and required_done == required_total else 1 if required_done else 0
-
-        search_suggestion = ""
-        if focus_paper:
-            search_suggestion = ", ".join(focus_paper["tags_list"][:2]) or focus_paper["domain"]
-        elif active_plan:
-            search_suggestion = active_plan["name"]
-
         data = context(
             request,
             "dashboard",
@@ -565,24 +400,6 @@ def dashboard(request: Request):
             xp=xp,
             realm=realm,
             streak=streak,
-            active_plan=dict(active_plan) if active_plan else None,
-            today_missions=today_missions,
-            today_progress=today_progress,
-            required_total=required_total,
-            required_done=required_done,
-            next_mission=next_mission,
-            reward_preview=reward_preview,
-            focus_paper=focus_paper,
-            learning_card=learning_card,
-            habit_week=habit_week,
-            active_days_7=active_days_7,
-            habit_message=habit_message,
-            today_xp=today_xp,
-            earned_assets=earned_assets,
-            due_review_count=due_review_count,
-            review_completed_today=review_completed_today,
-            loop_step=loop_step,
-            search_suggestion=search_suggestion,
             pending_review=pending_review,
             profile=profile,
             today_label=datetime.now().strftime("%Y年%m月%d日"),
@@ -1231,7 +1048,7 @@ def settings_get(request: Request):
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
-            portable_version=get_setting("portable_version", "2.0.0"),
+            portable_version=get_setting("portable_version", "2.0.1"),
         ),
     )
 
@@ -1522,7 +1339,7 @@ def backup(request: Request):
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "2.0.0"), "created_at": now_iso(), "database": DB_PATH.name}
+    manifest = {"version": get_setting("portable_version", "2.0.1"), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1968,7 +1785,7 @@ def portable_export():
                 zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "2.0.0"),
+                "version": get_setting("portable_version", "2.0.1"),
                 "created_at": now_iso(),
                 "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
             }

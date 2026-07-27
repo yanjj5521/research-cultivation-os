@@ -1,224 +1,57 @@
 {% extends "base.html" %}
-{% block title %}今日道场 · {{ site_name }}{% endblock %}
+{% block title %}山门 · {{ site_name }}{% endblock %}
 {% block content %}
-<section class="dashboard-v2" aria-label="科研系统今日总览">
-  <form class="home-command-search" method="get">
-    <span class="command-search-mark" aria-hidden="true">寻</span>
-    <label>
-      <small>一处检索，连接你的知识与世界</small>
-      <input name="q" value="" placeholder="{{ search_suggestion or '输入论文题目、概念、实验变量或作者' }}" autocomplete="off">
-    </label>
-    <button class="search-local" type="submit" formaction="{{ url_for('search') }}">搜我的知识库</button>
-    <button class="search-world" type="submit" formaction="{{ url_for('discover_page') }}">联网找论文</button>
-  </form>
+<section class="mountain-gate">
+  <div class="gate-sun"></div>
+  <div class="gate-mountain mountain-far"></div>
+  <div class="gate-mountain mountain-near"></div>
+  <div class="gate-mist mist-one"></div>
+  <div class="gate-mist mist-two"></div>
 
-  <div class="dashboard-v2-grid">
-    <section class="v2-column v2-main-column">
-      <article class="today-quest-card {% if required_total and required_done == required_total %}quest-cleared{% endif %}">
-        <div class="quest-atmosphere" aria-hidden="true"><i></i><i></i><i></i></div>
-        <header class="quest-card-head">
-          <div>
-            <span class="v2-kicker">{{ today_label }} · 今日只求一小胜</span>
-            <h1>{% if next_mission %}{{ next_mission.title }}{% elif active_plan %}今日主线已圆满{% else %}先为今天立一条主线{% endif %}</h1>
-          </div>
-          <span class="quest-day-seal">{% if active_plan %}D{{ active_plan.current_day }}{% else %}始{% endif %}</span>
-        </header>
-
-        {% if next_mission %}
-        <p class="quest-description">{{ next_mission.description or '完成眼前这一步，并留下一份能够验证你确实推进了的成果。' }}</p>
-        <div class="quest-deliverable"><span>交付</span><strong>{{ next_mission.deliverable or '一份可检查的最小成果' }}</strong></div>
-        <div class="quest-meta-row">
-          <span>{{ next_mission.category }}</span>
-          <span>{{ next_mission.duration_minutes }} 分钟</span>
-          <span>+{{ next_mission.xp }} 修为</span>
-          {% if reward_preview.spirit_stone %}<span>◆ {{ reward_preview.spirit_stone }} 灵石</span>{% endif %}
-        </div>
-        <div class="quest-support-loop" aria-label="科研系统的作用">
-          <span><b>定</b><small>替你收束下一步</small></span>
-          <i>→</i>
-          <span><b>证</b><small>把行动变成证据</small></span>
-          <i>→</i>
-          <span><b>忆</b><small>在明天主动提取</small></span>
-        </div>
-        <div class="quest-actions">
-          <a class="primary-button v2-primary" href="{{ url_for('daily_page') }}">进入今日主线 <b>→</b></a>
-          <a class="v2-quiet-action" href="{{ url_for('retreat_page') }}?minutes=10&focus={{ next_mission.title|urlencode }}">只做 10 分钟</a>
-        </div>
-        {% elif active_plan %}
-        <p class="quest-description">今天的必做任务已经全部交付。现在用三分钟温故，或者提前看一眼下一关，不再追加无意义工作。</p>
-        <div class="quest-actions">
-          <a class="primary-button v2-primary" href="{{ url_for('review_page') }}">完成今日收功 <b>→</b></a>
-          <a class="v2-quiet-action" href="{{ url_for('daily_page') }}">查看全部交付</a>
-        </div>
-        {% else %}
-        <p class="quest-description">系统不替你制造忙碌。导入一段近期计划后，首页每天只推送一个最该开始的动作。</p>
-        <div class="quest-actions">
-          <a class="primary-button v2-primary" href="{{ url_for('plans_page') }}">导入近期计划 <b>→</b></a>
-          <a class="v2-quiet-action" href="{{ url_for('note_new') }}">先写下问题</a>
-        </div>
-        {% endif %}
-
-        <footer class="quest-progress-footer">
-          <div>
-            <span><b>{{ required_done }}</b>/{{ required_total or 0 }} 今日必做</span>
-            <span>{{ today_progress }}%</span>
-          </div>
-          <span class="quest-progress-track"><i style="width:{{ today_progress }}%"></i></span>
-        </footer>
-      </article>
-
-      <article class="habit-loop-card">
-        <header class="v2-section-head">
-          <div><span class="v2-kicker">稳定线索，而非意志硬扛</span><h2>今日修行闭环</h2></div>
-          <a href="{{ url_for('daily_page') }}">查看计划</a>
-        </header>
-        <div class="loop-steps" aria-label="今日行动步骤">
-          <a class="{% if loop_step >= 1 %}done{% endif %} {% if loop_step == 0 %}current{% endif %}" href="{{ url_for('daily_page') }}"><b>1</b><span><strong>开工</strong><small>只选眼前一步</small></span></a>
-          <a class="{% if loop_step >= 2 %}done{% endif %} {% if loop_step == 1 %}current{% endif %}" href="{{ url_for('daily_page') }}"><b>2</b><span><strong>交付</strong><small>留下真实证据</small></span></a>
-          <a class="{% if loop_step >= 3 %}done{% endif %} {% if loop_step == 2 %}current{% endif %}" href="{{ url_for('review_page') }}"><b>3</b><span><strong>温故</strong><small>从记忆中提取</small></span></a>
-        </div>
-        <p class="loop-nudge">状态差时只做 10 分钟也算保持线索；今天不补课，也不为昨天惩罚自己。</p>
-        <div class="week-rhythm">
-          <div class="week-rhythm-copy"><strong>{{ active_days_7 }}/7</strong><span>{{ habit_message }}</span><small>漏一天不会抹掉长期成长</small></div>
-          <div class="week-dots">
-            {% for item in habit_week %}
-            <span class="{% if item.active %}active{% endif %} {% if item.today %}today{% endif %}" title="{{ item.date }} · {{ item.count }} 条行动"><i></i><small>{{ item.day }}</small></span>
-            {% endfor %}
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="v2-column v2-learning-column">
-      <article class="paper-of-day-card">
-        <header class="v2-section-head">
-          <div><span class="v2-kicker">今日论文卡</span><h2>每天遇见一份旧知识</h2></div>
-          <a href="{{ url_for('library') }}?kind=document">{{ stats.documents }} 篇</a>
-        </header>
-        {% if focus_paper %}
-        <a class="paper-card-body" href="{{ url_for('entry_view', entry_id=focus_paper.id) }}">
-          <div class="paper-cover" aria-hidden="true"><span>READ</span><b>{{ focus_paper.domain[:2] }}</b><i></i></div>
-          <div class="paper-card-copy">
-            <span>{{ focus_paper.domain }}{% if focus_paper.favorite %} · 已星标{% endif %}</span>
-            <h3>{{ focus_paper.title }}</h3>
-            <p>{{ focus_paper.preview_text or '这篇资料还没有摘要。今天只做一件事：打开它，找出作者真正回答的问题。' }}</p>
-          </div>
-        </a>
-        <div class="paper-card-tags">
-          {% for tag in focus_paper.tags_list[:3] %}<span>#{{ tag }}</span>{% endfor %}
-          {% if not focus_paper.tags_list %}<span>{{ focus_paper.original_name or '本地论文' }}</span>{% endif %}
-        </div>
-        <div class="paper-reading-lens" aria-label="论文阅读三问">
-          <span><b>问</b>作者真正回答什么？</span>
-          <span><b>证</b>哪张图提供关键证据？</span>
-          <span><b>界</b>结论在哪些条件下成立？</span>
-        </div>
-        <div class="paper-card-actions">
-          <a class="soft-button" href="{{ url_for('entry_view', entry_id=focus_paper.id) }}">打开论文卡</a>
-          <form method="get" action="{{ url_for('discover_page') }}">
-            <input type="hidden" name="q" value="{{ focus_paper.tags_list[:2]|join(' ') or focus_paper.domain }}">
-            <button class="text-button">找相近论文 ↗</button>
-          </form>
-        </div>
-        {% else %}
-        <div class="paper-empty-state">
-          <span>文</span>
-          <h3>第一张论文卡还没归山</h3>
-          <p>联网找到论文后，把 PDF 上传进本地知识库；从明天起，首页会轮换提醒你重新遇见它。</p>
-          <div><a class="soft-button" href="{{ url_for('discover_page') }}">联网找论文</a><a class="text-button" href="{{ url_for('upload') }}">上传 PDF</a></div>
-        </div>
-        {% endif %}
-      </article>
-
-      <article class="recall-card {% if learning_card %}has-learning{% endif %}" data-recall-card>
-        <header class="v2-section-head">
-          <div><span class="v2-kicker">主动回忆 · 每日一问</span><h2>{% if due_review_count %}{{ due_review_count }} 个记忆点到期{% else %}先想，再看证据{% endif %}</h2></div>
-          {% if due_review_count %}<a href="{{ url_for('review_page') }}">去复习</a>{% endif %}
-        </header>
-        {% if learning_card %}
-        <p class="recall-question">{{ learning_card.question }}</p>
-        <div class="recall-source"><span>{{ learning_card.kind_label }}</span><strong>{{ learning_card.title }}</strong></div>
-        <div class="recall-answer" data-recall-answer hidden>
-          <small>原资料中的线索</small>
-          <p>{{ learning_card.answer }}</p>
-        </div>
-        <div class="recall-actions">
-          <button class="soft-button" type="button" data-recall-toggle>想过了，揭示线索</button>
-          <a class="text-button" href="{{ url_for('entry_view', entry_id=learning_card.id) }}">查看原资料</a>
-        </div>
-        {% else %}
-        <div class="recall-empty">
-          <p>上传论文、写下笔记或记录失败后，系统每天从你自己的资料中抽取一道回忆题。</p>
-          <a class="soft-button" href="{{ url_for('note_new') }}">留下第一条知识</a>
-        </div>
-        {% endif %}
-      </article>
-    </section>
-
-    <aside class="v2-column v2-side-column">
-      <article class="realm-summary-card">
-        <a class="realm-owner" href="{{ url_for('profile_page') }}">
-          <span class="realm-avatar">{% if avatar_file %}<img src="/media/profile/{{ avatar_file }}" alt="">{% else %}{{ profile.avatar_symbol }}{% endif %}</span>
-          <span><small>{{ profile.title or '科研修行者' }}</small><strong>{{ profile.display_name }}</strong></span>
-          <i>↗</i>
-        </a>
-        <div class="realm-rank-row"><span>{{ realm.name }}</span><strong>{{ xp }}<small> 修为</small></strong></div>
-        <span class="realm-progress-track"><i style="width:{{ realm.progress }}%"></i></span>
-        <div class="realm-next-row">
-          {% if realm.tribulation_required %}
-          <span>突破雷劫已开启</span><a href="{{ url_for('trials_page') }}">前往渡关</a>
-          {% elif realm.remaining %}
-          <span>距 {{ realm.next_name }} 还差 {{ realm.remaining }}</span><small>{{ realm.progress }}%</small>
-          {% else %}
-          <span>已至当前最高境界</span><small>圆满</small>
-          {% endif %}
-        </div>
-      </article>
-
-      <article class="daily-treasure-card {% if today_xp %}lit{% endif %}">
-        <div class="treasure-mark" aria-hidden="true"><span>奖</span></div>
-        <div class="treasure-copy">
-          <span class="v2-kicker">今日真实收获</span>
-          <strong>+{{ today_xp }} 修为</strong>
-          <div class="treasure-assets">
-            <span>◆ {{ earned_assets.get('spirit_stone', 0) }}</span>
-            <span>⌁ {{ earned_assets.get('spirit_wood', 0) }}</span>
-            <span>⬢ {{ earned_assets.get('mystic_iron', 0) }}</span>
-            <span>✦ {{ earned_assets.get('star_sand', 0) }}</span>
-          </div>
-          <small>{% if today_xp %}奖励来自今天已经留下的资料与交付{% else %}完成一次真实交付后在这里点亮{% endif %}</small>
-        </div>
-      </article>
-
-      <article class="quick-capture-card">
-        <form method="post" action="{{ url_for('quick_capture') }}">
-          <label for="quickCapture"><span>闪念收集</span><small>别让问题从脑中溜走</small></label>
-          <div><input id="quickCapture" name="content" maxlength="3000" placeholder="一句想法、一个异常、一个待验证判断…" required><button aria-label="保存闪念">收</button></div>
-        </form>
-      </article>
-
-      <nav class="home-tool-dock" aria-label="常用工具与数据安全">
-        <a href="{{ url_for('note_new') }}"><b>记</b><span>写笔记<small>沉淀理解</small></span></a>
-        <a href="{{ url_for('upload') }}"><b>收</b><span>传资料<small>PDF / 数据</small></span></a>
-        <a href="{{ url_for('assistant_page') }}"><b>问</b><span>AI 协作<small>带上下文提问</small></span></a>
-        <a href="{{ url_for('workspaces_page') }}"><b>台</b><span>工作区<small>实验与模拟</small></span></a>
-        <a href="{{ url_for('settings_page') }}#personalization"><b>妆</b><span>个性化<small>主页与名称</small></span></a>
-        <a href="{{ url_for('backup') }}"><b>存</b><span>完整备份<small>数据不丢失</small></span></a>
-      </nav>
-    </aside>
+  <div class="gate-copy">
+    <span class="gate-date">{{ today_label }} · 今日一诗 · 每日更换</span>
+    <blockquote>{{ ui_home_poem }}</blockquote>
+    <p>{{ realm.name }} · 欢迎归山，{{ researcher_name }}。今天只推进眼前这一小步。</p>
+    <div class="gate-actions">
+      <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">{{ nav_labels.start }} <span>→</span></a>
+      <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整{{ nav_labels.plans }}</a>
+    </div>
   </div>
+
+  <a class="gate-profile" href="{{ url_for('profile_page') }}">
+    <span class="gate-avatar">{% if avatar_file %}<img src="/media/profile/{{ avatar_file }}" alt="{{ researcher_name }}的头像">{% else %}{{ profile.avatar_symbol }}{% endif %}</span>
+    <span class="gate-profile-copy"><small>{{ profile.title or '科研修行者' }}</small><strong>{{ profile.display_name }}</strong><em>{{ xp }} 修为 · 连续 {{ streak }} 天</em></span>
+    <span class="gate-profile-arrow">↗</span>
+  </a>
+</section>
+
+<form class="home-search gate-dual-search" method="get" aria-label="科研检索">
+  <span class="home-search-mark" aria-hidden="true">寻</span>
+  <label for="homeSearch">
+    <small>检索自己的资料，或按需联网查找论文</small>
+    <input id="homeSearch" name="q" placeholder="膨胀石墨、CV 电压窗口、LAMMPS……" autocomplete="off">
+  </label>
+  <button class="search-local" type="submit" formaction="{{ url_for('search') }}">搜知识库</button>
+  <button class="search-world" type="submit" formaction="{{ url_for('discover_page') }}">联网找论文</button>
+</form>
+
+<section class="gate-shortcuts" aria-label="核心入口">
+  <a class="gate-shortcut shortcut-cultivation" href="{{ url_for('cultivation_page') }}"><span>境</span><div><small>能力与成果里程碑</small><strong>{{ nav_labels.cultivation }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-review" href="{{ url_for('review_page') }}"><span>温</span><div><small>{% if pending_review %}{{ pending_review.source_count }} 份交付待复盘{% else %}从真实交付主动提取{% endif %}</small><strong>{{ nav_labels.review }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-retreat" href="{{ url_for('retreat_page') }}"><span>静</span><div><small>自定义专注倒计时</small><strong>{{ nav_labels.retreat }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-knowledge" href="{{ url_for('library') }}"><span>藏</span><div><small>{{ stats.total }} 条知识 · 可检索导出</small><strong>{{ nav_labels.library }}</strong></div><b>→</b></a>
 </section>
 
 {% if pending_review %}
 <div class="review-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
   <section class="review-modal">
     <span class="review-modal-mark">忆</span>
-    <small>稳定线索 · 每天只提醒一次</small>
+    <small>每天只弹一次</small>
     <h2 id="review-modal-title">{{ pending_review.source_date }} 的交付，到了提取时间</h2>
-    <p>系统只根据 {{ pending_review.source_count }} 份交付关键文本出题。先从记忆中作答，再查看当时留下的证据。</p>
+    <p>系统找到 {{ pending_review.source_count }} 份复盘关键文本。问题只根据这些交付生成，参考证据会在回答后显示。</p>
     <div class="review-modal-actions">
-      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始 3 分钟温故</button></form>
-      <form method="post" action="{{ url_for('review_snooze') }}"><button class="text-button">今天稍后再来</button></form>
+      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始 3 分钟复盘</button></form>
+      <form method="post" action="{{ url_for('review_snooze') }}"><button class="text-button">今天先不弹</button></form>
     </div>
   </section>
 </div>
