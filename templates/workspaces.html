@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ nav_labels.workspaces }} · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="page-head minimal-head">
+  <div>
+    <span class="eyebrow">Personal Workspaces</span>
+    <h1>{{ nav_labels.workspaces }}</h1>
+    <p>EG 实验、LAMMPS、数据集只是默认模板。你可以改名、换类型、停用或建立完全不同的科研工作区。</p>
+  </div>
+</div>
+
+<div class="workspace-layout">
+  <section class="workspace-list">
+    {% for item in items %}
+    <details class="panel workspace-editor workspace-accent-{{ item.accent }} {% if not item.active %}workspace-disabled{% endif %}">
+      <summary>
+        <span class="workspace-icon">{{ item.icon }}</span>
+        <span><strong>{{ item.name }}</strong><small>{{ item.module_label }} · {{ item.record_count }} 条记录{% if not item.active %} · 已停用{% endif %}</small></span>
+        <b>编辑</b>
+      </summary>
+      <form method="post" action="{{ url_for('workspace_save', workspace_id=item.id) }}" class="settings-form">
+        <div class="form-grid two">
+          <label><span>工作区名称</span><input name="name" maxlength="40" value="{{ item.name }}" required></label>
+          <label><span>图标文字</span><input name="icon" maxlength="2" value="{{ item.icon }}"></label>
+          <label><span>工作区类型</span><select name="module">{% for key, meta in workspace_modules.items() %}<option value="{{ key }}" {% if item.module==key %}selected{% endif %}>{{ meta[0] }}</option>{% endfor %}</select></label>
+          <label><span>排序数字</span><input type="number" name="sort_order" value="{{ item.sort_order }}"></label>
+          <label><span>色调</span><select name="accent">{% for color in workspace_accents %}<option value="{{ color }}" {% if item.accent==color %}selected{% endif %}>{{ color }}</option>{% endfor %}</select></label>
+          <label class="check-label"><input type="checkbox" name="active" value="1" {% if item.active %}checked{% endif %}>显示在导航中</label>
+        </div>
+        <label><span>用途说明</span><textarea name="description" rows="3">{{ item.description }}</textarea></label>
+        <div class="form-actions"><a href="{{ url_for('workspace_open', workspace_id=item.id) }}">打开工作区</a><button class="soft-button">保存</button></div>
+      </form>
+    </details>
+    {% endfor %}
+  </section>
+
+  <form class="panel settings-form workspace-create" method="post" action="{{ url_for('workspace_new') }}">
+    <div class="panel-head simple"><div><span class="eyebrow">New Workspace</span><h2>新建工作区</h2></div></div>
+    <label><span>名称</span><input name="name" maxlength="40" placeholder="例如：水泥发电实验" required></label>
+    <label><span>图标文字</span><input name="icon" maxlength="2" value="研"></label>
+    <label><span>类型</span><select name="module">{% for key, meta in workspace_modules.items() %}<option value="{{ key }}">{{ meta[0] }} · {{ meta[1] }}</option>{% endfor %}</select></label>
+    <label><span>用途说明</span><textarea name="description" rows="4" placeholder="这个空间准备保存什么？"></textarea></label>
+    <button class="primary-button full-button">建立工作区</button>
+    <small class="form-help">停用工作区不会删除其中的资料；完整备份和个性化迁移都会保留定义。</small>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}山门 · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="mountain-gate">
+  <div class="gate-sun"></div>
+  <div class="gate-mountain mountain-far"></div>
+  <div class="gate-mountain mountain-near"></div>
+  <div class="gate-mist mist-one"></div>
+  <div class="gate-mist mist-two"></div>
+
+  <div class="gate-copy">
+    <span class="gate-date">{{ today_label }} · 今日一诗 · 每日更换</span>
+    <blockquote>{{ ui_home_poem }}</blockquote>
+    <p>{{ realm.name }} · 欢迎归山，{{ researcher_name }}。今天只推进眼前这一小步。</p>
+    <div class="gate-actions">
+      <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">{{ nav_labels.start }} <span>→</span></a>
+      <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整{{ nav_labels.plans }}</a>
+    </div>
+  </div>
+
+  <a class="gate-profile" href="{{ url_for('profile_page') }}">
+    <span class="gate-avatar">{% if avatar_file %}<img src="/media/profile/{{ avatar_file }}" alt="{{ researcher_name }}的头像">{% else %}{{ profile.avatar_symbol }}{% endif %}</span>
+    <span class="gate-profile-copy"><small>{{ profile.title or '科研修行者' }}</small><strong>{{ profile.display_name }}</strong><em>{{ xp }} 修为 · 连续 {{ streak }} 天</em></span>
+    <span class="gate-profile-arrow">↗</span>
+  </a>
+</section>
+
+<section class="gate-shortcuts" aria-label="核心入口">
+  <a class="gate-shortcut shortcut-cultivation" href="{{ url_for('cultivation_page') }}"><span>境</span><div><small>能力与成果里程碑</small><strong>{{ nav_labels.cultivation }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-review" href="{{ url_for('review_page') }}"><span>温</span><div><small>{% if pending_review %}{{ pending_review.source_count }} 份交付待复盘{% else %}从真实交付主动提取{% endif %}</small><strong>{{ nav_labels.review }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-retreat" href="{{ url_for('retreat_page') }}"><span>静</span><div><small>自定义专注倒计时</small><strong>{{ nav_labels.retreat }}</strong></div><b>→</b></a>
+  <a class="gate-shortcut shortcut-knowledge" href="{{ url_for('library') }}"><span>藏</span><div><small>{{ stats.total }} 条知识 · 可检索导出</small><strong>{{ nav_labels.library }}</strong></div><b>→</b></a>
+</section>
+
+{% if pending_review %}
+<div class="review-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+  <section class="review-modal">
+    <span class="review-modal-mark">忆</span>
+    <small>每天只弹一次</small>
+    <h2 id="review-modal-title">{{ pending_review.source_date }} 的交付，到了提取时间</h2>
+    <p>系统找到 {{ pending_review.source_count }} 份复盘关键文本。问题只根据这些交付生成，参考证据会在回答后显示。</p>
+    <div class="review-modal-actions">
+      <form method="post" action="{{ url_for('review_start') }}"><input type="hidden" name="mode" value="yesterday"><button class="primary-button large-button">开始 3 分钟复盘</button></form>
+      <form method="post" action="{{ url_for('review_snooze') }}"><button class="text-button">今天先不弹</button></form>
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
