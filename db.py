@@ -4,18 +4,18 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Iterable
 
+from runtime_paths import INSTANCE_DIR
 from services.progression import (
     default_realm_labels,
     fixed_cultivation_xp,
     fixed_daily_xp,
     normalize_realm_labels,
 )
+from workspace_profiles import DEFAULT_WORKSPACES, profile_for
 
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "instance" / "research_os.db"
+DB_PATH = INSTANCE_DIR / "research_os.db"
 
 DEFAULT_NAV_LABELS = {
     "dashboard": "主页",
@@ -97,11 +97,13 @@ def transaction() -> Iterable[sqlite3.Connection]:
         conn.close()
 
 
-def _add_column(conn: sqlite3.Connection, table: str, definition: str) -> None:
+def _add_column(conn: sqlite3.Connection, table: str, definition: str) -> bool:
     name = definition.split()[0]
     columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
     if name not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+        return True
+    return False
 
 
 def init_db() -> None:
@@ -260,6 +262,10 @@ def init_db() -> None:
                 accent TEXT NOT NULL DEFAULT 'clay',
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 active INTEGER NOT NULL DEFAULT 1,
+                pinned_home INTEGER NOT NULL DEFAULT 0,
+                objective TEXT NOT NULL DEFAULT '',
+                workflow_json TEXT NOT NULL DEFAULT '[]',
+                toolset_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -595,6 +601,10 @@ def init_db() -> None:
         _add_column(conn, "online_sync_queue", "sequence_no INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "online_sync_queue", "next_attempt_at TEXT")
         _add_column(conn, "online_sync_queue", "dead_letter INTEGER NOT NULL DEFAULT 0")
+        pinned_home_added = _add_column(conn, "workspaces", "pinned_home INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "workspaces", "objective TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "workspaces", "workflow_json TEXT NOT NULL DEFAULT '[]'")
+        _add_column(conn, "workspaces", "toolset_json TEXT NOT NULL DEFAULT '[]'")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_workspace ON entries(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_workspace ON experiments(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_simulations_workspace ON simulations(workspace_id, updated_at DESC)")
@@ -647,7 +657,7 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "2.0.2",
+            "portable_version": "2.1.0",
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
@@ -708,24 +718,55 @@ def init_db() -> None:
             "UPDATE settings SET value=? WHERE key='nav_labels'",
             (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
         )
-        conn.execute("UPDATE settings SET value='2.0.2' WHERE key='portable_version'")
+        conn.execute("UPDATE settings SET value='2.1.0' WHERE key='portable_version'")
         ts = now_iso()
-        default_workspaces = (
-            ("eg-lab", "EG 实验", "验", "experiments", "配比、成型、电化学与力学实验台账", "clay", 10),
-            ("lammps-lab", "LAMMPS", "算", "simulations", "可复现模拟案例、日志与轨迹归档", "ink", 20),
-            ("dataset-lab", "数据集", "数", "datasets", "实验表格、机器学习数据与变量说明", "sage", 30),
-            ("ml-lab", "ML", "智", "ml", "数据、特征、训练、验证与模型卡归档", "sage", 40),
-            ("md-lab", "MD", "动", "md", "结构、力场、轨迹、分析与可复现案例", "ink", 50),
-            ("comsol-lab", "COMSOL", "场", "comsol", "几何、材料、网格、求解器与多物理场验证", "amber", 60),
-        )
-        for workspace in default_workspaces:
+        for workspace in DEFAULT_WORKSPACES:
+            profile = profile_for(workspace["module"])
             conn.execute(
                 """
                 INSERT OR IGNORE INTO workspaces(
-                    workspace_key,name,icon,module,description,accent,sort_order,created_at,updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
+                    workspace_key,name,icon,module,description,accent,sort_order,active,pinned_home,
+                    objective,workflow_json,toolset_json,created_at,updated_at
+                ) VALUES (?,?,?,?,?,?,?,1,1,?,?,?,?,?)
                 """,
-                (*workspace, ts, ts),
+                (
+                    workspace["workspace_key"],
+                    workspace["name"],
+                    workspace["icon"],
+                    workspace["module"],
+                    workspace["description"],
+                    workspace["accent"],
+                    workspace["sort_order"],
+                    profile["objective"],
+                    json.dumps(profile["workflow"], ensure_ascii=False),
+                    json.dumps(profile["tools"], ensure_ascii=False),
+                    ts,
+                    ts,
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE workspaces
+                SET objective=CASE WHEN trim(objective)='' THEN ? ELSE objective END,
+                    workflow_json=CASE WHEN trim(workflow_json) IN ('','[]') THEN ? ELSE workflow_json END,
+                    toolset_json=CASE WHEN trim(toolset_json) IN ('','[]') THEN ? ELSE toolset_json END
+                WHERE workspace_key=?
+                """,
+                (
+                    profile["objective"],
+                    json.dumps(profile["workflow"], ensure_ascii=False),
+                    json.dumps(profile["tools"], ensure_ascii=False),
+                    workspace["workspace_key"],
+                ),
+            )
+        if pinned_home_added:
+            conn.execute(
+                """
+                UPDATE workspaces SET pinned_home=1
+                WHERE workspace_key IN (
+                    'eg-lab','lammps-lab','dataset-lab','ml-lab','md-lab','comsol-lab'
+                )
+                """
             )
         workspace_ids = {
             row["workspace_key"]: int(row["id"])

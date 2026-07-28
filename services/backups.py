@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from db import DB_PATH, connect
+from runtime_paths import STORAGE_ROOT
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-AUTO_BACKUP_DIR = BASE_DIR / "storage" / "autobackups"
+AUTO_BACKUP_DIR = STORAGE_ROOT / "autobackups"
 
 
 def backup_local_db(*, keep: int = 14, min_interval_hours: int = 12, force: bool = False) -> Path | None:

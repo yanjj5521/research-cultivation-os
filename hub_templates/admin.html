@@ -37,7 +37,7 @@
   <form class="panel form-grid" method="post" action="{{ url_for('hub_release_upload') }}" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
     <h2>发布新版本</h2>
-    <label>版本号<input name="version" placeholder="2.0.2" required></label>
+    <label>版本号<input name="version" placeholder="2.1.0" required></label>
     <label>标题<input name="title" required></label>
     <label>更新说明<textarea name="notes" rows="3"></textarea></label>
     <label>ZIP版本包<input type="file" name="file" accept=".zip" required></label>

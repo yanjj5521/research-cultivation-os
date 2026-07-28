@@ -14,14 +14,14 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from db import connect, now_iso
+from runtime_paths import STORAGE_ROOT
 from services.economy import award_mission, balance, balances, transact
 from services.plan_import import PlanSpec, build_default_plan, parse_plan_text, render_plan_text
 from services.prompt_builder import build_plan_prompt, current_state
 from services.online_sync import best_effort_sync, queue_event
 from services.progression import fixed_cultivation_xp, fixed_daily_xp
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DELIVERY_DIR = BASE_DIR / "storage" / "deliveries"
+DELIVERY_DIR = STORAGE_ROOT / "deliveries"
 DELIVERY_DIR.mkdir(parents=True, exist_ok=True)
 POSTPONE_COST = 2
 

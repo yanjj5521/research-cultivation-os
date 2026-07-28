@@ -2,8 +2,8 @@
 {% block title %}{{ nav_labels.cultivation }} · {{ site_name }}{% endblock %}
 {% block content %}
 <div class="page-head minimal-head">
-  <div><span class="eyebrow">Cultivation Record</span><h1>{{ nav_labels.cultivation }}</h1><p>修炼任务记录跨天的能力与成果；每日任务只记录今天要做的下一行动。两者可以关联，但分别完成、分别验收。</p></div>
-  <a class="primary-button" href="#new-cultivation-task">建立修炼任务</a>
+  <div><span class="eyebrow">Cultivation Record</span><h1>{% if selected_workspace %}{{ selected_workspace.icon }} {{ selected_workspace.name }} · {% endif %}{{ nav_labels.cultivation }}</h1><p>修炼任务记录跨天的能力与成果；每日任务只记录今天要做的下一行动。两者可以关联，但分别完成、分别验收。</p></div>
+  <div class="page-actions">{% if selected_workspace %}<a class="ghost-button" href="{{ url_for('cultivation_page') }}">全部任务</a>{% endif %}<a class="primary-button" href="#new-cultivation-task">建立修炼任务</a></div>
 </div>
 
 <section class="panel cultivation-hero">
@@ -61,7 +61,7 @@
     <label><span>为什么做</span><textarea name="description" rows="3" placeholder="它会改变哪一种科研能力或产出？"></textarea></label>
     <label><span>验收标准</span><textarea name="deliverable" rows="3" placeholder="例如：随机选择3张曲线，完成盲测判读并与参考结论核对"></textarea></label>
     <label><span>难度</span><select name="difficulty"><option value="1">小成 · 固定25修为</option><option value="2">进阶 · 固定50修为</option><option value="3">突破 · 固定90修为</option></select></label>
-    <label><span>所属工作区（可选）</span><select name="workspace_id"><option value="">不关联</option>{% for workspace in workspaces %}<option value="{{ workspace.id }}">{{ workspace.name }}</option>{% endfor %}</select></label>
+    <label><span>所属工作区（可选）</span><select name="workspace_id"><option value="">不关联</option>{% for workspace in workspaces %}<option value="{{ workspace.id }}" {% if selected_workspace and selected_workspace.id == workspace.id %}selected{% endif %}>{{ workspace.name }}</option>{% endfor %}</select></label>
     <button class="primary-button full-button">加入修炼记录</button>
     <small class="form-help">经验值不能输入，也不会从 AI 计划中读取；所有人使用同一套固定难度表。</small>
   </form>

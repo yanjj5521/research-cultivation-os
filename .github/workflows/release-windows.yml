@@ -1,0 +1,115 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+      - requirements.txt
+      - requirements-build.txt
+      - "*.py"
+      - "features/**"
+      - "services/**"
+      - "templates/**"
+      - "static/**"
+      - "packaging/**"
+      - ".github/workflows/release-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out stable source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "VERSION must use semantic versioning."
+          }
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install build dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-build.txt
+
+      - name: Run application checks
+        run: |
+          python self_test.py
+          python self_test.py --integration
+
+      - name: Build one-folder executable
+        run: pyinstaller --noconfirm --clean packaging/ResearchOS.spec
+
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          $testData = Join-Path $env:RUNNER_TEMP "research-os-smoke"
+          & ".\dist\ResearchOS\ResearchOS.exe" --data-dir $testData --self-check
+          if ($LASTEXITCODE -ne 0) { throw "Packaged self-check failed." }
+
+      - name: Assemble public ZIP
+        shell: pwsh
+        run: |
+          $releaseName = "ResearchCultivationOS-v$env:APP_VERSION-Windows-x64"
+          $releaseRoot = Join-Path "release" $releaseName
+          New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+          Copy-Item "dist\ResearchOS\*" $releaseRoot -Recurse -Force
+          Copy-Item "packaging\windows\*.cmd" $releaseRoot -Force
+          Copy-Item "packaging\USER_README.txt" $releaseRoot -Force
+          Copy-Item "VERSION" $releaseRoot -Force
+          $zipPath = Join-Path "release" "$releaseName.zip"
+          Compress-Archive -Path $releaseRoot -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          "$hash  $releaseName.zip" | Set-Content "release\SHA256SUMS.txt" -Encoding ascii
+          "RELEASE_ZIP=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ResearchCultivationOS-v${{ env.APP_VERSION }}-Windows-x64
+          path: |
+            ${{ env.RELEASE_ZIP }}
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish immutable version assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            choco install gh -y
+          }
+          $tag = "v$env:APP_VERSION"
+          $existingTags = gh release list `
+            --repo $env:GITHUB_REPOSITORY `
+            --limit 100 `
+            --json tagName `
+            --jq '.[].tagName'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not inspect existing releases."
+          }
+          if ($existingTags -contains $tag) {
+            Write-Host "Release $tag already exists; assets were not replaced."
+            exit 0
+          }
+          gh release create $tag `
+            $env:RELEASE_ZIP `
+            "release\SHA256SUMS.txt" `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "问道科研 v$env:APP_VERSION" `
+            --notes-file "docs\releases\v$env:APP_VERSION.md"

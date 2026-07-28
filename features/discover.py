@@ -8,6 +8,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from version import APP_VERSION
 
 def register_discover_routes(app, templates, context: Callable[..., dict[str, Any]]):
     router = APIRouter()
@@ -22,7 +23,7 @@ def register_discover_routes(app, templates, context: Callable[..., dict[str, An
                 params = urllib.parse.urlencode({'search': query, 'per-page': 8, 'sort': 'relevance_score:desc'})
                 req = urllib.request.Request(
                     f'https://api.openalex.org/works?{params}',
-                    headers={'User-Agent': 'ResearchCultivationOS/2.0.2 (local research tool)'},
+                    headers={"User-Agent": f"ResearchCultivationOS/{APP_VERSION} (local research tool)"},
                 )
                 with urllib.request.urlopen(req, timeout=8) as response:
                     data = json.load(response)

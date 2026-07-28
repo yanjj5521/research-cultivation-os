@@ -11,6 +11,7 @@ from PIL import Image
 
 import app
 from db import connect, get_setting, now_iso, set_setting, total_xp
+from runtime_paths import USER_CONFIG_DIR
 from services.progression import (
     REALM_STAGES,
     TRIBULATION_GATES,
@@ -24,7 +25,7 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v2.0.2 loop.
+    """Exercise the complete v2.1.0 loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -181,6 +182,66 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         if workspace_item["name"] not in response.text:
             failures.append(f"{module} workspace did not open its personalized module page")
 
+    eg_workspace = default_workspaces.get("eg-lab")
+    ml_workspace = default_workspaces.get("ml-lab")
+    if eg_workspace and ml_workspace:
+        eg_tasks = client.get(f"/cultivation?workspace={eg_workspace['id']}")
+        ml_tasks = client.get(f"/cultivation?workspace={ml_workspace['id']}")
+        _check_response(failures, "workspace-scoped cultivation tasks", eg_tasks)
+        _check_response(failures, "empty workspace-scoped cultivation tasks", ml_tasks)
+        if "建立证据边界判断能力" not in eg_tasks.text:
+            failures.append("workspace task component did not show the linked milestone")
+        if "建立证据边界判断能力" in ml_tasks.text:
+            failures.append("workspace task component leaked another workspace's milestone")
+        if f'value="{eg_workspace["id"]}" selected' not in eg_tasks.text:
+            failures.append("workspace task form did not preselect the active workspace")
+
+    if ml_workspace:
+        _check_response(
+            failures,
+            "ML workspace personalization save",
+            client.post(
+                f"/workspaces/{ml_workspace['id']}/save",
+                data={
+                    "name": "材料 ML",
+                    "icon": "模",
+                    "module": "ml",
+                    "description": "以实验数据验证模型。",
+                    "objective": "建立带数据谱系和外部验证的模型卡。",
+                    "workflow": "锁定数据版本\n记录特征管线\n比较指标\n实验外部验证",
+                    "tools": ["datasets", "notes", "folders", "tasks"],
+                    "accent": "amber",
+                    "sort_order": "45",
+                    "active": "1",
+                    "pinned_home": "1",
+                },
+            ),
+        )
+        with connect() as conn:
+            personalized_ml = conn.execute(
+                "SELECT * FROM workspaces WHERE id=?",
+                (ml_workspace["id"],),
+            ).fetchone()
+        if not personalized_ml:
+            failures.append("personalized ML workspace disappeared")
+        else:
+            saved_workflow = json.loads(personalized_ml["workflow_json"])
+            saved_tools = json.loads(personalized_ml["toolset_json"])
+            if (
+                personalized_ml["name"] != "材料 ML"
+                or personalized_ml["accent"] != "amber"
+                or personalized_ml["objective"] != "建立带数据谱系和外部验证的模型卡。"
+                or saved_workflow != ["锁定数据版本", "记录特征管线", "比较指标", "实验外部验证"]
+                or saved_tools != ["datasets", "notes", "folders", "tasks"]
+                or int(personalized_ml["pinned_home"]) != 1
+            ):
+                failures.append("ML workspace personalization did not round-trip")
+            personalized_page = client.get(f"/workspaces/{ml_workspace['id']}")
+            _check_response(failures, "personalized ML workspace open", personalized_page)
+            for marker in ("材料 ML", "建立带数据谱系", "锁定数据版本", "项目文件夹"):
+                if marker not in personalized_page.text:
+                    failures.append(f"personalized ML workspace missed: {marker}")
+
     experiment_workspace = default_workspaces.get("eg-lab")
     simulation_workspace = default_workspaces.get("lammps-lab")
     dataset_workspace = default_workspaces.get("dataset-lab")
@@ -246,7 +307,8 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         failures.append("dashboard did not surface the pending review")
     for marker in (
         "mountain-gate", "今日一诗", "gate-dual-search", "搜知识库", "联网找论文",
-        "gate-shortcuts", "home-workbench-dock", "ML", "MD", "COMSOL", "本地优先 · 联机关闭",
+        "gate-shortcuts", "home-workbench-dock", "home-continuity-strip",
+        "LAMMPS", "数据集", "ML", "MD", "COMSOL", "本地优先 · 联机关闭",
     ):
         if marker not in dashboard.text:
             failures.append(f"light mountain-gate dashboard missed: {marker}")
@@ -485,12 +547,27 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v5":
-        failures.append("personalization export did not use the v5 format")
+    if package.get("format") != "research-cultivation-personalization-v6":
+        failures.append("personalization export did not use the v6 format")
     if len(package.get("theme", {}).get("realm_names", {})) != 39:
         failures.append("personalization export did not include the full realm map")
     if not package.get("workspaces"):
         failures.append("personalization export did not include workspace definitions")
+    exported_ml = next(
+        (
+            workspace
+            for workspace in package.get("workspaces", [])
+            if workspace.get("workspace_key") == "ml-lab"
+        ),
+        {},
+    )
+    if (
+        exported_ml.get("name") != "材料 ML"
+        or exported_ml.get("objective") != "建立带数据谱系和外部验证的模型卡。"
+        or exported_ml.get("workflow") != ["锁定数据版本", "记录特征管线", "比较指标", "实验外部验证"]
+        or exported_ml.get("tools") != ["datasets", "notes", "folders", "tasks"]
+    ):
+        failures.append("personalization export missed composable ML workspace fields")
     if not package.get("avatar_image", {}).get("data_base64"):
         failures.append("personalization export did not include the uploaded avatar")
     if "hub_api_token" in json.dumps(package, ensure_ascii=False):
@@ -512,6 +589,31 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     )
     if get_setting("site_name") != "自检科研系统":
         failures.append("personalization import did not restore the site name")
+
+    overflow_package = json.loads(json.dumps(package, ensure_ascii=False))
+    for workspace_item in overflow_package.get("workspaces", []):
+        workspace_item["active"] = 1
+        workspace_item["pinned_home"] = 1
+    _check_response(
+        failures,
+        "personalization home pin limit",
+        client.post(
+            "/online/personalization/import",
+            files={
+                "file": (
+                    "personalization-overflow.json",
+                    json.dumps(overflow_package, ensure_ascii=False).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        ),
+    )
+    with connect() as conn:
+        imported_pin_count = conn.execute(
+            "SELECT COUNT(*) n FROM workspaces WHERE active=1 AND pinned_home=1"
+        ).fetchone()["n"]
+    if imported_pin_count != 6:
+        failures.append("personalization import did not enforce the six-workspace home limit")
 
     legacy_package = {
         "format": "research-cultivation-personalization-v1",
@@ -552,7 +654,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "/online/personalization/import",
             files={
                 "file": (
-                    "personalization-v5.json",
+                    "personalization-v6.json",
                     json.dumps(package, ensure_ascii=False).encode("utf-8"),
                     "application/json",
                 )
@@ -571,6 +673,50 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             failures.append("knowledge export did not include original attachments")
     except zipfile.BadZipFile:
         failures.append("portable knowledge export was not a valid ZIP")
+
+    USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    (USER_CONFIG_DIR / "self-test-layout.json").write_text(
+        '{"workspace_layout":"self-test"}\n',
+        encoding="utf-8",
+    )
+
+    complete_backup = client.get("/backup")
+    _check_response(failures, "complete backup with user config", complete_backup)
+    try:
+        with zipfile.ZipFile(io.BytesIO(complete_backup.content)) as archive:
+            backup_names = set(archive.namelist())
+        if "user_config/self-test-layout.json" not in backup_names:
+            failures.append("complete backup missed separated user configuration")
+    except zipfile.BadZipFile:
+        failures.append("complete backup was not a valid ZIP")
+
+    portable_system = client.get("/portable")
+    _check_response(failures, "separated portable system export", portable_system)
+    try:
+        with zipfile.ZipFile(io.BytesIO(portable_system.content)) as archive:
+            names = set(archive.namelist())
+        required_portable_files = {
+            "ResearchCultivationOS/portable.flag",
+            "ResearchCultivationOS/PORTABLE_MANIFEST.json",
+            "ResearchCultivationOS/user_data/instance/research_os.db",
+            "ResearchCultivationOS/user_data/user_config/self-test-layout.json",
+        }
+        if not required_portable_files.issubset(names):
+            failures.append("portable system export missed its separated data layout")
+        if any(
+            name.startswith("ResearchCultivationOS/instance/")
+            or name.startswith("ResearchCultivationOS/storage/")
+            or "/.git/" in name
+            for name in names
+        ):
+            failures.append("portable system export leaked development or legacy data paths")
+        if not any(
+            name.startswith("ResearchCultivationOS/user_data/storage/uploads/")
+            for name in names
+        ):
+            failures.append("portable system export missed uploaded research files")
+    except zipfile.BadZipFile:
+        failures.append("portable system export was not a valid ZIP")
 
 
 def main() -> None:
@@ -658,8 +804,26 @@ def main() -> None:
             "eg-lab", "lammps-lab", "dataset-lab", "ml-lab", "md-lab", "comsol-lab",
         }:
             failures.append("six default workspaces were not initialized")
-    if get_setting("portable_version") != "2.0.2":
-        failures.append("portable version was not migrated to 2.0.2")
+        workspace_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(workspaces)")
+        }
+        expected_workspace_columns = {
+            "pinned_home", "objective", "workflow_json", "toolset_json",
+        }
+        if not expected_workspace_columns.issubset(workspace_columns):
+            failures.append("workspace personalization columns were not migrated")
+        pinned_defaults = conn.execute(
+            """
+            SELECT COUNT(*) n FROM workspaces
+            WHERE workspace_key IN (
+                'eg-lab','lammps-lab','dataset-lab','ml-lab','md-lab','comsol-lab'
+            ) AND pinned_home=1
+            """
+        ).fetchone()["n"]
+        if pinned_defaults != 6:
+            failures.append("six default workspaces were not pinned on first initialization")
+    if get_setting("portable_version") != "2.1.0":
+        failures.append("portable version was not migrated to 2.1.0")
     if len(REALM_STAGES) != 39:
         failures.append(f"realm system expected 39 stages, got {len(REALM_STAGES)}")
     requirements = [stage.required_xp for stage in REALM_STAGES[1:]]
@@ -689,7 +853,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v2.0.2 light mountain-gate dashboard, six workspaces, sync guardrails, knowledge export and local database are ready.")
+        print("Core pages, v2.1.0 light mountain-gate dashboard, composable workspaces, sync guardrails, knowledge export and separated local data are ready.")
 
 
 if __name__ == "__main__":

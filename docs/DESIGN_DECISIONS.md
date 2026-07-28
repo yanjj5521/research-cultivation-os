@@ -1,6 +1,6 @@
-# v2.0.2 设计依据
+# v2.1.0 设计依据
 
-本文件记录 2026-07-27 开发时采用的外部依据与后续使用反馈。v2.0.2 保留 v2.0.1 的轻量山门，只在底部增加默认工作台与联机状态，不恢复高密度仪表盘。
+本文件记录截至 2026-07-28 采用的外部依据与后续使用反馈。v2.1 保留 v2.0.2 的轻量山门和全部原有入口，只在底部补连续性状态；同时让六类默认工作区拥有不同证据链，并把正式 EXE 与源码开发、程序与个人数据分开。
 
 ## 修炼任务与每日任务分层
 
@@ -79,7 +79,7 @@ Lally 等人的真实世界研究让参与者在相同情境中重复一个自�
 看见唯一下一步 → 10 分钟启动 → 提交证据 → 次日温故
 ```
 
-v2.0 的实际使用反馈表明，把闭环的每一步、论文轮播、主动回忆、闪念、奖励和备份同时放入首页，会增加扫描与选择负担。v2.0.1 因此采用渐进呈现：首页只保留山门氛围、四个核心入口和本地/联网双检索，其余动作回到职责明确的独立页面。v2.0.2 只补一条低密度工作台坞，承载 ML、MD、COMSOL 和联机状态；它不显示任务、奖励、论文轮播或可编辑表单。窄屏允许自然滚动，避免为了形式上的一屏裁掉内容。
+v2.0 的实际使用反馈表明，把闭环的每一步、论文轮播、主动回忆、闪念、奖励和备份同时放入首页，会增加扫描与选择负担。v2.0.1 因此采用渐进呈现：首页只保留山门氛围、四个核心入口和本地/联网双检索，其余动作回到职责明确的独立页面。v2.0.2 只补一条低密度工作台坞，v2.1 将它扩展为最多六个由本人固定的工作区，并在下方只显示最近保存、工作区数量、数据位置和版本；它仍不显示任务、奖励、论文轮播或可编辑表单。窄屏允许自然滚动，避免为了形式上的一屏裁掉内容。
 
 联网检索仍只在用户点击时发生，首页加载不自动发送研究关键词。论文卡与知识条目没有删除，继续保存在藏经阁、搜索结果和条目详情中。
 
@@ -98,11 +98,27 @@ W3C 的一致导航与一致识别原则要求同一功能在一组页面中保�
 
 用户发起的改名会在所有页面一致应用。
 
-## 个人工作区
+## 有证据链的个人工作区
 
-EG 实验、LAMMPS、数据集、ML、MD 和 COMSOL 被降级为可改名的默认模板。动态工作区定义只保存名称、图标、类型、排序和启用状态；科研记录仍使用结构化表与附件。这样别人的导航可以完全不同，又不需要为每个人复制一套程序代码。
+EG 实验、LAMMPS、数据集、ML、MD 和 COMSOL 是可改名的默认模板。动态工作区定义保存名称、图标、类型、排序、色调、启停、首页固定、当前目标、4–6 步流程和组件组合；科研记录仍使用结构化表与附件。这样别人的导航可以完全不同，又不需要为每个人复制一套程序代码。
 
-ML 与 MD 不被混成同一数据表：公共数据只作为先验与边界，自己的实验决定最终验证；MD 轨迹与描述符独立建模，再在结论层与实验互证。COMSOL 工作区同样把模型假设、边界条件、网格无关性和实验校核放在同一证据链中。
+MLflow 把一次机器学习运行组织为参数、指标和产物，并在模型注册表中强调版本、别名、标签与谱系；ML 工作区因此显式保留数据/代码版本、参数、指标、产物、误差与验证。LAMMPS 官方把输入脚本、数据、日志、dump、restart 等文件区分为不同运行角色；LAMMPS 与 MD 工作区据此分别保留“程序级复现”和“结构—力场—平衡—轨迹—分析”的证据链。COMSOL 的模型管理和验证案例则强调模型版本、几何材料、边界、网格与基准/实验校核，因此不会把 COMSOL 简化成普通附件夹。
+
+所有推荐搭配都能逐项修改和一键恢复。类型变更时不会自动抹掉用户当前设置；只有用户明确点击“恢复推荐搭配”才重置流程与组件。
+
+## EXE 发行与源码开发分离
+
+Python 官方将 Windows embeddable distribution 定位为其他应用的一部分；PyInstaller 则能把解释器和依赖一并打包，让没有安装 Python 的用户运行程序。v2.1 采用 PyInstaller one-folder，而不是 one-file：启动稍快、文件问题更容易定位、更新也能以完整目录为单位验证。
+
+程序与数据采用不同生命周期：
+
+- 正式 EXE 默认读取 `%LOCALAPPDATA%\ResearchCultivationOS`；
+- U 盘模式通过 `portable.flag` 使用相邻 `user_data/`；
+- 源码/CMD 开发继续使用仓库内数据，兼容既有目录；
+- 旧版迁移使用 SQLite Backup API 复制数据库，再复制附件目录；
+- GitHub Release 只包含程序、说明和校验值，不包含任何个人数据库、配置或科研文件。
+
+GitHub 的公开/私有可见性作用于仓库，而不是单个分支。因此公开 `main` 用于稳定源码，未完成开发保存在另一个本地工作树或单独私有仓库；不能把开发分支推到同一公开仓库后再声称源码不可见。
 
 ## 高频导航保持展开
 
@@ -142,7 +158,7 @@ OpenAPI 用语言无关的格式描述 HTTP 接口，适合先固定客户端与
 
 ## 轻量联机的故障隔离
 
-Google Cloud 的重试建议强调：只重试可重试且幂等的操作，使用带抖动的指数退避，区分永久错误并设置上限；RFC 9110 定义了服务端可通过 `Retry-After` 指示等待时间。v2.0.2 因此采用“本地成功与联机成功分离”的策略：
+Google Cloud 的重试建议强调：只重试可重试且幂等的操作，使用带抖动的指数退避，区分永久错误并设置上限；RFC 9110 定义了服务端可通过 `Retry-After` 指示等待时间。v2.0.2 起采用“本地成功与联机成功分离”的策略：
 
 - 自动同步超时 1.5 秒，避免网络拖慢正常交付；
 - 唯一事件 UUID 使重复请求保持幂等；
@@ -204,3 +220,12 @@ CommonMark 将 Markdown 定义为用于结构化文档的纯文本格式，并�
 - https://www.sqlite.org/wal.html
 - https://www.sqlite.org/backup.html
 - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+- https://docs.python.org/3/using/windows.html
+- https://pyinstaller.org/en/stable/operating-mode.html
+- https://mlflow.org/docs/latest/ml/tracking/
+- https://mlflow.org/docs/latest/ml/model-registry/
+- https://docs.lammps.org/Run_formats.html
+- https://www.comsol.com/blogs/now-available-comsol-multiphysics-version-6-0
+- https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+- https://docs.github.com/en/repositories/creating-and-managing-repositories/about-repositories
+- https://learn.microsoft.com/en-us/windows/apps/develop/data/store-and-retrieve-app-data

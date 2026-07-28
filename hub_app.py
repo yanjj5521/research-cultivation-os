@@ -10,7 +10,6 @@ import threading
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -42,11 +41,13 @@ from hub_db import (
 )
 from services.game_world import ARTIFACTS, BUILDINGS
 from services.progression import normalize_realm_labels
+from runtime_paths import APP_ROOT
+from version import APP_VERSION
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = APP_ROOT
 TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
-VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip() if (BASE_DIR / "VERSION").exists() else "2.0.2"
+VERSION = APP_VERSION
 
 app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"

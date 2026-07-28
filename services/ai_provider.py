@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from db import get_setting
+from version import APP_VERSION
 
 
 class AIProviderError(RuntimeError):
@@ -116,7 +117,7 @@ def generate_structured(
             "format": schema,
             "options": {"temperature": 0.2},
         }
-        headers = {"Content-Type": "application/json", "User-Agent": "ResearchCultivationOS/2.0.2"}
+        headers = {"Content-Type": "application/json", "User-Agent": f"ResearchCultivationOS/{APP_VERSION}"}
         label = f"本地 Ollama · {model}"
     elif mode == "openai":
         endpoint = _endpoint(get_setting("ai_endpoint", "https://api.openai.com/v1/responses"))
@@ -141,7 +142,7 @@ def generate_structured(
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "ResearchCultivationOS/2.0.2",
+            "User-Agent": f"ResearchCultivationOS/{APP_VERSION}",
         }
         label = f"外部模型 · {model}"
     else:

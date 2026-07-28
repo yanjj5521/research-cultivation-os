@@ -50,6 +50,8 @@ hub_admin_credentials.txt
 *.tar
 *.gz
 *.7z
+user_data/
+release/
 
 # OS / editor
 .DS_Store

@@ -4,11 +4,11 @@ import socket
 import threading
 import urllib.request
 import webbrowser
-from pathlib import Path
 
 import uvicorn
 
 from hub_db import HUB_ADMIN_PATH, init_hub_db
+from version import APP_VERSION
 
 HOST = "0.0.0.0"
 LOCAL_HOST = "127.0.0.1"
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         print(f"Port {PORT} is occupied by another program.")
         input("Press Enter to close...")
     else:
-        print("\nResearch Cultivation OS Shared Hub v2.0.2")
+        print(f"\nResearch Cultivation OS Shared Hub v{APP_VERSION}")
         print(f"Local admin page: http://{LOCAL_HOST}:{PORT}")
         print("LAN address: http://<this-computer-LAN-IP>:5050")
         print("For Internet access, use Tailscale Funnel, a named Cloudflare Tunnel, or a small VPS.")

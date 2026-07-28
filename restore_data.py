@@ -9,9 +9,11 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import Tk, filedialog, messagebox
 
-BASE = Path(__file__).resolve().parent
-DB = BASE / "instance" / "research_os.db"
-STORAGE = BASE / "storage"
+from runtime_paths import DATA_ROOT, INSTANCE_DIR, STORAGE_ROOT, USER_CONFIG_DIR
+
+BASE = DATA_ROOT
+DB = INSTANCE_DIR / "research_os.db"
+STORAGE = STORAGE_ROOT
 
 
 def main() -> None:
@@ -31,6 +33,12 @@ def main() -> None:
         shutil.copytree(STORAGE / "deliveries", safety / "deliveries", dirs_exist_ok=True) if (STORAGE / "deliveries").exists() else None
         shutil.copytree(STORAGE / "note_images", safety / "note_images", dirs_exist_ok=True) if (STORAGE / "note_images").exists() else None
         shutil.copytree(STORAGE / "profile", safety / "profile", dirs_exist_ok=True) if (STORAGE / "profile").exists() else None
+    if USER_CONFIG_DIR.exists():
+        shutil.copytree(
+            USER_CONFIG_DIR,
+            safety / "user_config",
+            dirs_exist_ok=True,
+        )
     try:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
@@ -59,6 +67,16 @@ def main() -> None:
                 uploads = next((p for p in target.rglob("uploads") if p.is_dir()), None)
                 if uploads:
                     shutil.copytree(uploads, STORAGE / "uploads", dirs_exist_ok=True)
+            config_source = next(
+                (p for p in target.rglob("user_config") if p.is_dir()),
+                None,
+            )
+            if config_source:
+                shutil.copytree(
+                    config_source,
+                    USER_CONFIG_DIR,
+                    dirs_exist_ok=True,
+                )
         messagebox.showinfo("Restore complete", "Data restored. Start Research Cultivation OS again.")
     except Exception as exc:
         messagebox.showerror("Restore failed", str(exc))

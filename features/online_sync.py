@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
+from runtime_paths import STORAGE_ROOT
 from services.online_sync import (
     best_effort_sync,
     cached_value,
@@ -27,9 +28,10 @@ from services.sync_backend import (
     build_sync_backend,
     validate_hub_url,
 )
+from workspace_profiles import normalize_toolset, normalize_workflow
+from version import APP_VERSION
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-EXPORT_DIR = BASE_DIR / "storage" / "sync_exports"
+EXPORT_DIR = STORAGE_ROOT / "sync_exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -98,7 +100,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 last_error=cached_value("last_sync_error", {}),
                 hub_state=cached_value("hub_state", {}),
                 latest_release=cached_value("latest_release", None),
-                local_version=get_setting("portable_version", "2.0.2"),
+                local_version=get_setting("portable_version", APP_VERSION),
             ),
         )
 
@@ -112,7 +114,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         )
         return {
             "application": "Research Cultivation OS",
-            "local_version": get_setting("portable_version", "2.0.2"),
+            "local_version": get_setting("portable_version", APP_VERSION),
             "active_backend": backend.capabilities.as_dict(),
             "available_backends": all_backend_capabilities(),
             "data_policy": {
@@ -247,18 +249,22 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
     def personalization_export():
         with connect() as conn:
             profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
-            workspaces = [
-                dict(row)
-                for row in conn.execute(
-                    """
-                    SELECT workspace_key,name,icon,module,description,accent,sort_order,active
-                    FROM workspaces ORDER BY sort_order,id
-                    """
-                )
-            ]
+            workspaces = []
+            for row in conn.execute(
+                """
+                SELECT workspace_key,name,icon,module,description,accent,sort_order,active,
+                       pinned_home,objective,workflow_json,toolset_json
+                FROM workspaces ORDER BY sort_order,id
+                """
+            ):
+                item = dict(row)
+                module = str(item["module"])
+                item["workflow"] = normalize_workflow(item.pop("workflow_json", "[]"), module)
+                item["tools"] = normalize_toolset(item.pop("toolset_json", "[]"), module)
+                workspaces.append(item)
         payload = {
-            "format": "research-cultivation-personalization-v5",
-            "schema_version": 5,
+            "format": "research-cultivation-personalization-v6",
+            "schema_version": 6,
             "exported_at": now_iso(),
             "theme": _theme(),
             "profile": {k: profile[k] for k in ("display_name", "title", "bio", "skills", "capabilities", "goals", "avatar_symbol")},
@@ -279,6 +285,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 "research-cultivation-personalization-v3",
                 "research-cultivation-personalization-v4",
                 "research-cultivation-personalization-v5",
+                "research-cultivation-personalization-v6",
             }:
                 raise ValueError("不是受支持的个性化包")
             theme = data.get("theme", {})
@@ -341,15 +348,27 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                         accent = str(item.get("accent", "clay"))
                         if accent not in {"clay", "sage", "ink", "amber"}:
                             accent = "clay"
+                        workflow = normalize_workflow(
+                            item.get("workflow", item.get("workflow_json", "[]")),
+                            module,
+                        )
+                        toolset = normalize_toolset(
+                            item.get("tools", item.get("toolset_json", "[]")),
+                            module,
+                        )
                         conn.execute(
                             """
                             INSERT INTO workspaces(
-                                workspace_key,name,icon,module,description,accent,sort_order,active,created_at,updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                                workspace_key,name,icon,module,description,accent,sort_order,active,
+                                pinned_home,objective,workflow_json,toolset_json,created_at,updated_at
+                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             ON CONFLICT(workspace_key) DO UPDATE SET
                                 name=excluded.name,icon=excluded.icon,module=excluded.module,
                                 description=excluded.description,accent=excluded.accent,
-                                sort_order=excluded.sort_order,active=excluded.active,updated_at=excluded.updated_at
+                                sort_order=excluded.sort_order,active=excluded.active,
+                                pinned_home=excluded.pinned_home,objective=excluded.objective,
+                                workflow_json=excluded.workflow_json,toolset_json=excluded.toolset_json,
+                                updated_at=excluded.updated_at
                             """,
                             (
                                 workspace_key,
@@ -360,9 +379,28 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                                 accent,
                                 int(item.get("sort_order", (index + 1) * 10)),
                                 1 if int(item.get("active", 1)) else 0,
+                                1 if int(item.get("pinned_home", 0)) else 0,
+                                str(item.get("objective", "")).strip()[:300],
+                                json.dumps(workflow, ensure_ascii=False),
+                                json.dumps(toolset, ensure_ascii=False),
                                 now_iso(),
                                 now_iso(),
                             ),
+                        )
+                    conn.execute(
+                        "UPDATE workspaces SET pinned_home=0 WHERE active=0"
+                    )
+                    pinned_rows = conn.execute(
+                        """
+                        SELECT id FROM workspaces
+                        WHERE active=1 AND pinned_home=1
+                        ORDER BY sort_order,id
+                        """
+                    ).fetchall()
+                    for row in pinned_rows[6:]:
+                        conn.execute(
+                            "UPDATE workspaces SET pinned_home=0 WHERE id=?",
+                            (row["id"],),
                         )
                 conn.commit()
             if data.get("avatar_image"):

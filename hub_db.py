@@ -9,12 +9,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
-BASE_DIR = Path(__file__).resolve().parent
-HUB_DB_PATH = BASE_DIR / "instance" / "hub.db"
-HUB_BACKUP_DIR = BASE_DIR / "storage" / "hub_backups"
-HUB_RELEASE_DIR = BASE_DIR / "storage" / "hub_releases"
-HUB_SECRET_PATH = BASE_DIR / "instance" / "hub_secret.txt"
-HUB_ADMIN_PATH = BASE_DIR / "instance" / "HUB_ADMIN_CREDENTIALS.txt"
+from runtime_paths import INSTANCE_DIR, STORAGE_ROOT
+
+HUB_DB_PATH = INSTANCE_DIR / "hub.db"
+HUB_BACKUP_DIR = STORAGE_ROOT / "hub_backups"
+HUB_RELEASE_DIR = STORAGE_ROOT / "hub_releases"
+HUB_SECRET_PATH = INSTANCE_DIR / "hub_secret.txt"
+HUB_ADMIN_PATH = INSTANCE_DIR / "HUB_ADMIN_CREDENTIALS.txt"
 
 ASSET_KEYS = ("spirit_stone", "spirit_wood", "mystic_iron", "star_sand")
 
@@ -287,19 +288,19 @@ def init_hub_db() -> None:
         )
         defaults = {
             "site_name": "问道科研 · 同行会",
-            "version": "2.0.2",
+            "version": "2.1.0",
             "registration_mode": "invite",
             "max_members": "10",
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO hub_settings(key,value) VALUES (?,?)", (key, value))
-        conn.execute("UPDATE hub_settings SET value='2.0.2' WHERE key='version'")
+        conn.execute("UPDATE hub_settings SET value='2.1.0' WHERE key='version'")
         admin = conn.execute("SELECT id FROM hub_users WHERE role='admin' LIMIT 1").fetchone()
         if not admin:
             password = secrets.token_urlsafe(10)
             user_id, token = create_user(conn, "admin", password, "洞府主人", role="admin")
             HUB_ADMIN_PATH.write_text(
-                "问道科研 v2.0.2 轻量联机中心管理员凭据\n"
+                "问道科研 v2.1.0 轻量联机中心管理员凭据\n"
                 "================================\n"
                 f"用户名: admin\n密码: {password}\nAPI Token: {token}\n\n"
                 "首次登录后请立即修改密码。修改成功后系统会销毁这份一次性凭据文件；\n"

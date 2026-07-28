@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from version import APP_VERSION
 
 SYNC_CONTRACT_VERSION = "2026-07-27"
 SYNC_EVENT_SCHEMA_VERSION = 1
@@ -147,7 +148,7 @@ class LegacyHubBackend:
             headers={
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
-                "User-Agent": "ResearchCultivationOS/2.0.2",
+                "User-Agent": f"ResearchCultivationOS/{APP_VERSION}",
                 "X-Sync-Contract": SYNC_CONTRACT_VERSION,
             },
         )

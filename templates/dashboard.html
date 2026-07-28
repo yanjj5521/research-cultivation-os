@@ -55,6 +55,13 @@
   </a>
 </section>
 
+<section class="home-continuity-strip" aria-label="科研数据与版本状态">
+  <span><b>近存</b><em>{{ home_last_saved }}</em></span>
+  <span><b>工作区</b><em>{{ home_workspace_total }} 个可用 · 首页按个人固定</em></span>
+  <span><b>数据</b><em>{{ home_data_label }} · 更新不覆盖</em></span>
+  <a href="{{ url_for('settings_page') }}"><b>v{{ app_version }}</b><em>备份与迁移 →</em></a>
+</section>
+
 {% if pending_review %}
 <div class="review-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
   <section class="review-modal">

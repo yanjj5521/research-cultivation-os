@@ -11,11 +11,11 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from db import connect, now_iso
+from runtime_paths import STORAGE_ROOT
 from services.ai_provider import provider_status
 from services.review_engine import add_or_increment_herb, generate_special_task
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DELIVERY_DIR = BASE_DIR / "storage" / "deliveries"
+DELIVERY_DIR = STORAGE_ROOT / "deliveries"
 
 HERB_GRADES = {
     1: {"label": "凡品", "name": "青露草", "icon": "♧"},

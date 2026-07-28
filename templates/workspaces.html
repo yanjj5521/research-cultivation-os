@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Personal Workspaces</span>
     <h1>{{ nav_labels.workspaces }}</h1>
-    <p>EG、LAMMPS、数据集、ML、MD 与 COMSOL 是默认模板。你可以改名、换类型、停用或建立完全不同的科研工作区。</p>
+    <p>每个空间都能独立设置名称、首页位置、科研流程和常用组件。默认模板只是起点，不会锁死你的研究方向。</p>
   </div>
 </div>
 
@@ -15,20 +15,43 @@
     <details class="panel workspace-editor workspace-accent-{{ item.accent }} {% if not item.active %}workspace-disabled{% endif %}">
       <summary>
         <span class="workspace-icon">{{ item.icon }}</span>
-        <span><strong>{{ item.name }}</strong><small>{{ item.module_label }} · {{ item.record_count }} 条记录{% if not item.active %} · 已停用{% endif %}</small></span>
-        <b>编辑</b>
+        <span>
+          <strong>{{ item.name }}{% if item.pinned_home %}<i class="workspace-pin">首页</i>{% endif %}</strong>
+          <small>{{ item.module_label }} · {{ item.record_count }} 条记录 · {{ item.toolset|length }} 个组件{% if not item.active %} · 已停用{% endif %}</small>
+        </span>
+        <b>个性化</b>
       </summary>
-      <form method="post" action="{{ url_for('workspace_save', workspace_id=item.id) }}" class="settings-form">
+      <form method="post" action="{{ url_for('workspace_save', workspace_id=item.id) }}" class="settings-form workspace-personalize-form">
         <div class="form-grid two">
           <label><span>工作区名称</span><input name="name" maxlength="40" value="{{ item.name }}" required></label>
           <label><span>图标文字</span><input name="icon" maxlength="2" value="{{ item.icon }}"></label>
           <label><span>工作区类型</span><select name="module">{% for key, meta in workspace_modules.items() %}<option value="{{ key }}" {% if item.module==key %}selected{% endif %}>{{ meta[0] }}</option>{% endfor %}</select></label>
-          <label><span>排序数字</span><input type="number" name="sort_order" value="{{ item.sort_order }}"></label>
-          <label><span>色调</span><select name="accent">{% for color in workspace_accents %}<option value="{{ color }}" {% if item.accent==color %}selected{% endif %}>{{ color }}</option>{% endfor %}</select></label>
-          <label class="check-label"><input type="checkbox" name="active" value="1" {% if item.active %}checked{% endif %}>显示在导航中</label>
+          <label><span>导航顺序</span><input type="number" name="sort_order" value="{{ item.sort_order }}"></label>
+          <label><span>色调</span><select name="accent">{% for color, label in workspace_accents.items() %}<option value="{{ color }}" {% if item.accent==color %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <div class="workspace-visibility-options">
+            <label class="check-label"><input type="checkbox" name="active" value="1" {% if item.active %}checked{% endif %}>显示在导航中</label>
+            <label class="check-label"><input type="checkbox" name="pinned_home" value="1" {% if item.pinned_home %}checked{% endif %}>固定到首页工作台</label>
+          </div>
         </div>
-        <label><span>用途说明</span><textarea name="description" rows="3">{{ item.description }}</textarea></label>
-        <div class="form-actions"><a href="{{ url_for('workspace_open', workspace_id=item.id) }}">打开工作区</a><button class="soft-button">保存</button></div>
+        <label><span>用途说明</span><textarea name="description" rows="2">{{ item.description }}</textarea></label>
+        <label><span>当前目标</span><textarea name="objective" rows="2">{{ item.objective or item.profile.objective }}</textarea></label>
+        <label><span>自己的科研流程（每行一步，最多 6 步）</span><textarea name="workflow" rows="4">{{ item.workflow|join('\n') }}</textarea></label>
+        <fieldset class="workspace-tool-picker">
+          <legend>装配常用组件</legend>
+          <p>只决定这个工作区首页放哪些入口，不会删除任何资料。</p>
+          <div>
+            {% for key, meta in workspace_tools.items() %}
+            <label><input type="checkbox" name="tools" value="{{ key }}" {% if key in item.toolset %}checked{% endif %}><span><b>{{ meta[1] }}</b><strong>{{ meta[0] }}</strong><small>{{ meta[2] }}</small></span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <a href="{{ url_for('workspace_open', workspace_id=item.id) }}">打开工作区</a>
+          <button class="soft-button">保存个性化</button>
+        </div>
+      </form>
+      <form class="workspace-reset-form" method="post" action="{{ url_for('workspace_reset', workspace_id=item.id) }}" onsubmit="return confirm('恢复该类型的推荐流程和组件？名称、资料和排序不会改变。')">
+        <button class="text-button" type="submit">恢复推荐搭配</button>
       </form>
     </details>
     {% endfor %}
@@ -40,8 +63,9 @@
     <label><span>图标文字</span><input name="icon" maxlength="2" value="研"></label>
     <label><span>类型</span><select name="module">{% for key, meta in workspace_modules.items() %}<option value="{{ key }}">{{ meta[0] }} · {{ meta[1] }}</option>{% endfor %}</select></label>
     <label><span>用途说明</span><textarea name="description" rows="4" placeholder="这个空间准备保存什么？"></textarea></label>
-    <button class="primary-button full-button">建立工作区</button>
-    <small class="form-help">停用工作区不会删除其中的资料；完整备份和个性化迁移都会保留定义。</small>
+    <label class="check-label"><input type="checkbox" name="pinned_home" value="1">建立后固定到首页（最多 6 个）</label>
+    <button class="primary-button full-button">建立并装配推荐流程</button>
+    <small class="form-help">停用工作区不会删除资料；流程、组件、首页固定和排序会进入个性化包。</small>
   </form>
 </div>
 {% endblock %}

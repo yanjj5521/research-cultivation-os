@@ -9,9 +9,9 @@ from typing import Any
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from db import get_setting, set_setting
+from runtime_paths import STORAGE_ROOT
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-PROFILE_DIR = BASE_DIR / "storage" / "profile"
+PROFILE_DIR = STORAGE_ROOT / "profile"
 PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_AVATAR_BYTES = 5 * 1024 * 1024

@@ -54,14 +54,22 @@ from services.progression import (
     normalize_realm_labels,
     realm_state,
 )
+from runtime_paths import (
+    APP_ROOT,
+    DATA_ROOT,
+    DISTRIBUTION_ROOT,
+    STORAGE_ROOT,
+    USER_CONFIG_DIR,
+)
+from version import APP_VERSION
 
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = BASE_DIR / "storage" / "uploads"
-BACKUP_DIR = BASE_DIR / "storage" / "backups"
-SIMULATION_DIR = BASE_DIR / "storage" / "simulations"
-FOUNDATION_DIR = BASE_DIR / "storage" / "research_foundation"
-DELIVERY_DIR = BASE_DIR / "storage" / "deliveries"
-NOTE_IMAGE_DIR = BASE_DIR / "storage" / "note_images"
+BASE_DIR = APP_ROOT
+UPLOAD_DIR = STORAGE_ROOT / "uploads"
+BACKUP_DIR = STORAGE_ROOT / "backups"
+SIMULATION_DIR = STORAGE_ROOT / "simulations"
+FOUNDATION_DIR = STORAGE_ROOT / "research_foundation"
+DELIVERY_DIR = STORAGE_ROOT / "deliveries"
+NOTE_IMAGE_DIR = STORAGE_ROOT / "note_images"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 SIMULATION_DIR.mkdir(parents=True, exist_ok=True)
@@ -397,15 +405,28 @@ def dashboard(request: Request):
                 """
                 SELECT id,workspace_key,name,icon,module,accent
                 FROM workspaces
-                WHERE active=1 AND workspace_key IN ('ml-lab','md-lab','comsol-lab')
-                ORDER BY CASE workspace_key
-                    WHEN 'ml-lab' THEN 1
-                    WHEN 'md-lab' THEN 2
-                    WHEN 'comsol-lab' THEN 3
-                    ELSE 9 END
+                WHERE active=1 AND pinned_home=1
+                ORDER BY sort_order,id
+                LIMIT 6
                 """
             )
         ]
+        if not home_workspaces:
+            home_workspaces = [
+                dict(row)
+                for row in conn.execute(
+                    """
+                    SELECT id,workspace_key,name,icon,module,accent
+                    FROM workspaces WHERE active=1 ORDER BY sort_order,id LIMIT 6
+                    """
+                )
+            ]
+        workspace_total = int(conn.execute(
+            "SELECT COUNT(*) n FROM workspaces WHERE active=1"
+        ).fetchone()["n"])
+        last_activity = conn.execute(
+            "SELECT detail,created_at FROM activities ORDER BY id DESC LIMIT 1"
+        ).fetchone()
         sync_provider = get_setting("sync_provider", "disabled")
 
         pending_review = pending_review_group(conn) if get_setting("review_popup", "1") == "1" else None
@@ -425,6 +446,18 @@ def dashboard(request: Request):
                 else "本地优先 · 联机关闭"
             ),
             home_sync_active=sync_provider == "legacy_hub",
+            home_workspace_total=workspace_total,
+            home_last_saved=(
+                str(last_activity["detail"])[:52]
+                if last_activity and str(last_activity["detail"]).strip()
+                else "尚未留下第一份科研证据"
+            ),
+            home_data_label=(
+                "独立用户数据目录"
+                if DATA_ROOT.resolve() != BASE_DIR.resolve()
+                else "当前目录本地保存"
+            ),
+            app_version=APP_VERSION,
             today_label=datetime.now().strftime("%Y年%m月%d日"),
         )
     return templates.TemplateResponse(request=request, name="dashboard.html", context=data)
@@ -470,9 +503,12 @@ def retreat_page(request: Request):
 
 
 @app.get("/library", response_class=HTMLResponse, name="library")
-def library(request: Request, kind: str = "", domain: str = "", favorite: str = ""):
+def library(request: Request, kind: str = "", domain: str = "", favorite: str = "", workspace: int = 0):
     sql = "SELECT * FROM entries WHERE status='active'"
     params: list[Any] = []
+    if workspace:
+        sql += " AND workspace_id=?"
+        params.append(workspace)
     if kind:
         sql += " AND kind=?"
         params.append(kind)
@@ -484,10 +520,22 @@ def library(request: Request, kind: str = "", domain: str = "", favorite: str = 
     sql += " ORDER BY favorite DESC, updated_at DESC LIMIT 300"
     with connect() as conn:
         entries = [entry_dict(row) for row in conn.execute(sql, params)]
+        selected_workspace = conn.execute(
+            "SELECT id,name,icon FROM workspaces WHERE id=?", (workspace,)
+        ).fetchone() if workspace else None
     return templates.TemplateResponse(
         request=request,
         name="library.html",
-        context=context(request, "library", entries=entries, selected_kind=kind, selected_domain=domain, favorite=favorite),
+        context=context(
+            request,
+            "library",
+            entries=entries,
+            selected_kind=kind,
+            selected_domain=domain,
+            favorite=favorite,
+            selected_workspace=dict(selected_workspace) if selected_workspace else None,
+            active_workspace_id=workspace or None,
+        ),
     )
 
 
@@ -1071,7 +1119,7 @@ def settings_get(request: Request):
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
-            portable_version=get_setting("portable_version", "2.0.2"),
+            portable_version=get_setting("portable_version", APP_VERSION),
         ),
     )
 
@@ -1362,7 +1410,13 @@ def backup(request: Request):
             shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".gitkeep"))
         else:
             target.mkdir(parents=True, exist_ok=True)
-    manifest = {"version": get_setting("portable_version", "2.0.2"), "created_at": now_iso(), "database": DB_PATH.name}
+    if USER_CONFIG_DIR.exists():
+        shutil.copytree(
+            USER_CONFIG_DIR,
+            stage / "user_config",
+            dirs_exist_ok=True,
+        )
+    manifest = {"version": get_setting("portable_version", APP_VERSION), "created_at": now_iso(), "database": DB_PATH.name}
     (stage / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     archive = shutil.make_archive(str(stage), "zip", root_dir=stage)
     shutil.rmtree(stage, ignore_errors=True)
@@ -1696,8 +1750,12 @@ def simulation_file(simulation_id: int, file_id: int):
 
 
 @app.get("/cultivation", response_class=HTMLResponse, name="cultivation_page")
-def cultivation_page(request: Request):
+def cultivation_page(request: Request, workspace: int = 0):
     with connect() as conn:
+        selected_workspace = conn.execute(
+            "SELECT id,name,icon FROM workspaces WHERE id=? AND active=1",
+            (workspace,),
+        ).fetchone() if workspace else None
         xp = total_xp(conn)
         activity_rows = [dict(row) for row in conn.execute("SELECT action,SUM(xp) xp,COUNT(*) n FROM activities GROUP BY action ORDER BY xp DESC")]
         totals = dict(conn.execute("""SELECT COUNT(*) total, COALESCE(SUM(CASE WHEN trim(tags)!='' THEN 1 ELSE 0 END),0) tagged, COALESCE(SUM(CASE WHEN trim(summary)!='' THEN 1 ELSE 0 END),0) summarized, COALESCE(SUM(CASE WHEN analysis_json!='{}' THEN 1 ELSE 0 END),0) analyzed FROM entries""").fetchone())
@@ -1706,18 +1764,21 @@ def cultivation_page(request: Request):
         total_assets = totals["total"] + exp_total + sim_total
         quality_points = totals["tagged"] * 2 + totals["summarized"] * 2 + totals["analyzed"] * 4 + exp_total * 5 + sim_total * 5
         quality = min(100, round(quality_points / max(total_assets * 5, 1) * 100))
+        quest_sql = """
+            SELECT q.*,w.name workspace_name,
+                (SELECT COUNT(*) FROM daily_missions m WHERE m.quest_id=q.id) linked_total,
+                (SELECT COALESCE(SUM(m.completed),0) FROM daily_missions m WHERE m.quest_id=q.id) linked_done
+            FROM quests q
+            LEFT JOIN workspaces w ON w.id=q.workspace_id
+        """
+        quest_params: list[Any] = []
+        if selected_workspace:
+            quest_sql += " WHERE q.workspace_id=?"
+            quest_params.append(workspace)
+        quest_sql += " ORDER BY q.completed,q.difficulty DESC,q.updated_at DESC,q.id DESC"
         quests = [
             dict(row)
-            for row in conn.execute(
-                """
-                SELECT q.*,w.name workspace_name,
-                    (SELECT COUNT(*) FROM daily_missions m WHERE m.quest_id=q.id) linked_total,
-                    (SELECT COALESCE(SUM(m.completed),0) FROM daily_missions m WHERE m.quest_id=q.id) linked_done
-                FROM quests q
-                LEFT JOIN workspaces w ON w.id=q.workspace_id
-                ORDER BY q.completed,q.difficulty DESC,q.updated_at DESC,q.id DESC
-                """
-            )
+            for row in conn.execute(quest_sql, quest_params)
         ]
         workspaces = [
             dict(row)
@@ -1772,6 +1833,12 @@ def cultivation_page(request: Request):
             workspaces=workspaces,
             difficulty_labels=CULTIVATION_DIFFICULTY_LABELS,
             achievements=ach,
+            selected_workspace=(
+                dict(selected_workspace) if selected_workspace else None
+            ),
+            active_workspace_id=(
+                int(selected_workspace["id"]) if selected_workspace else None
+            ),
         ),
     )
 
@@ -1781,8 +1848,16 @@ def cultivation_page(request: Request):
 def portable_export():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     archive = BACKUP_DIR / f"ResearchCultivationOS_portable_{timestamp}.zip"
-    excluded_dirs = {".venv", "__pycache__", ".git", "backups", "build", "dist"}
+    excluded_dirs = {
+        ".venv", "__pycache__", ".git", "backups", "autobackups", "build", "dist",
+        "instance", "storage", "user_data",
+    }
     excluded_suffixes = {".pyc", ".pyo"}
+    program_root = DISTRIBUTION_ROOT
+    portable_storage_names = (
+        "uploads", "simulations", "research_foundation", "deliveries",
+        "note_images", "profile", "sync_exports",
+    )
     with tempfile.TemporaryDirectory() as tmp:
         consistent_db = Path(tmp) / DB_PATH.name
         if DB_PATH.exists():
@@ -1794,23 +1869,44 @@ def portable_export():
                 destination_conn.close()
                 source_conn.close()
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            for path in BASE_DIR.rglob("*"):
-                relative = path.relative_to(BASE_DIR)
+            for path in program_root.rglob("*"):
+                relative = path.relative_to(program_root)
                 if any(part in excluded_dirs for part in relative.parts):
-                    continue
-                if relative.parts[:1] == ("instance",) and (path.name.startswith("research_os.db") or path.name.startswith("hub.db") or path.name in {"hub_secret.txt", "HUB_ADMIN_CREDENTIALS.txt"}):
                     continue
                 if path == archive or path.suffix.lower() in excluded_suffixes:
                     continue
                 if path.is_file():
                     zf.write(path, Path("ResearchCultivationOS") / relative)
             if consistent_db.exists():
-                zf.write(consistent_db, "ResearchCultivationOS/instance/research_os.db")
+                zf.write(
+                    consistent_db,
+                    "ResearchCultivationOS/user_data/instance/research_os.db",
+                )
+            for name in portable_storage_names:
+                source_dir = STORAGE_ROOT / name
+                if not source_dir.exists():
+                    continue
+                for path in source_dir.rglob("*"):
+                    if path.is_file() and path != archive:
+                        relative = path.relative_to(source_dir)
+                        zf.write(
+                            path,
+                            Path("ResearchCultivationOS/user_data/storage") / name / relative,
+                        )
+            if USER_CONFIG_DIR.exists():
+                for path in USER_CONFIG_DIR.rglob("*"):
+                    if path.is_file():
+                        relative = path.relative_to(USER_CONFIG_DIR)
+                        zf.write(
+                            path,
+                            Path("ResearchCultivationOS/user_data/user_config") / relative,
+                        )
+            zf.writestr("ResearchCultivationOS/portable.flag", "portable-data-v1\n")
             manifest = {
                 "name": "Research Cultivation OS",
-                "version": get_setting("portable_version", "2.0.2"),
+                "version": get_setting("portable_version", APP_VERSION),
                 "created_at": now_iso(),
-                "instructions": "Unzip, then double-click Start_Research_OS.cmd. The local environment is recreated automatically.",
+                "instructions": "完整解压后启动。portable.flag 会让数据继续保存在 user_data 中，不写入系统目录。",
             }
             zf.writestr("ResearchCultivationOS/PORTABLE_MANIFEST.json", json.dumps(manifest, ensure_ascii=False, indent=2))
     log_activity("portable_export", 5, "生成整套便携迁移包")
