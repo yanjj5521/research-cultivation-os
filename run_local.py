@@ -4,6 +4,7 @@ import argparse
 import os
 import socket
 import sys
+import tempfile
 import threading
 import urllib.request
 import webbrowser
@@ -29,6 +30,9 @@ def preconfigure_runtime() -> argparse.Namespace:
         os.environ["RESEARCH_OS_DATA_DIR"] = str(executable_root / "user_data")
     elif args.data_dir:
         os.environ["RESEARCH_OS_DATA_DIR"] = str(Path(args.data_dir).expanduser().resolve())
+    elif args.self_check:
+        # A manual self-check must never add test plans to the user's real data.
+        os.environ["RESEARCH_OS_DATA_DIR"] = tempfile.mkdtemp(prefix="research-os-self-check-")
     return args
 
 
@@ -85,6 +89,7 @@ if __name__ == "__main__":
     from app import app as web_app
     if args.self_check:
         from fastapi.testclient import TestClient
+        from db import connect
         from version import APP_VERSION
 
         with TestClient(web_app) as client:
@@ -96,6 +101,46 @@ if __name__ == "__main__":
                     )
             if "gate-dual-search" not in client.get("/").text:
                 raise SystemExit("Packaged self-check failed: the homepage template is incomplete.")
+            plans_page = client.get("/plans")
+            if "planImportForm" not in plans_page.text or "导入并立即进入 Day 1" not in plans_page.text:
+                raise SystemExit("Packaged self-check failed: plan import controls are incomplete.")
+            with connect() as conn:
+                original = conn.execute(
+                    "SELECT id FROM study_plans WHERE status='active' ORDER BY updated_at DESC LIMIT 1"
+                ).fetchone()
+            copied_plan = """电化学资产化入门计划
+用5天形成可复用的电化学资产
+修炼任务
+• [进阶] 建立电化学最小概念与计算资产 | 验收：概念表与计算模板
+第一天｜量纲起点
+• [重点] 完成 Q-I-V-C-E-P 概念图 | 45分钟 | 交付：概念图
+第二天｜CV 判读
+• [可选] 判读一张 CV 曲线 | 20min | 交付：三句话判读
+"""
+            imported = client.post("/plans/import", data={"plan_text": copied_plan})
+            if imported.status_code != 200 or "电化学资产化入门计划" not in imported.text:
+                raise SystemExit("Packaged self-check failed: a copied plan could not be imported.")
+            with connect() as conn:
+                active = conn.execute(
+                    "SELECT id,name FROM study_plans WHERE status='active'"
+                ).fetchall()
+            if len(active) != 1 or active[0]["name"] != "电化学资产化入门计划":
+                raise SystemExit("Packaged self-check failed: imported plan was not activated.")
+            client.post("/plans/999999999/activate")
+            with connect() as conn:
+                after_invalid = conn.execute(
+                    "SELECT id FROM study_plans WHERE status='active'"
+                ).fetchall()
+            if len(after_invalid) != 1 or int(after_invalid[0]["id"]) != int(active[0]["id"]):
+                raise SystemExit("Packaged self-check failed: invalid activation changed the current plan.")
+            if original:
+                client.post(f"/plans/{original['id']}/activate")
+                with connect() as conn:
+                    restored = conn.execute(
+                        "SELECT id FROM study_plans WHERE status='active'"
+                    ).fetchall()
+                if len(restored) != 1 or int(restored[0]["id"]) != int(original["id"]):
+                    raise SystemExit("Packaged self-check failed: archived plan activation failed.")
         print(f"Research Cultivation OS {APP_VERSION} self-check PASS")
         print(f"Data: {DATA_ROOT}")
         raise SystemExit(0)

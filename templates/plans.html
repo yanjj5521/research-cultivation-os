@@ -7,9 +7,22 @@
 </div>
 
 {% if selected %}
-<section class="panel current-plan-card">
-  <div><span class="eyebrow">正在使用</span><h2>{{ selected.name }}</h2><p>{{ selected.description }}</p></div>
-  <div class="current-plan-actions"><strong>Day {{ selected.current_day }} / {{ selected.total_days }}</strong><a class="primary-button" href="{{ url_for('daily_page') }}">继续今天</a></div>
+<section class="panel current-plan-card {% if selected.status != 'active' %}archived-plan-card{% endif %}">
+  <div>
+    <span class="eyebrow">{{ '正在使用' if selected.status == 'active' else '计划预览 · 尚未启用' }}</span>
+    <h2>{{ selected.name }}</h2>
+    <p>{{ selected.description }}</p>
+  </div>
+  <div class="current-plan-actions">
+    <strong>Day {{ selected.current_day }} / {{ selected.total_days }}</strong>
+    {% if selected.status == 'active' %}
+    <a class="primary-button" href="{{ url_for('daily_page') }}">继续今天</a>
+    {% else %}
+    <form method="post" action="{{ url_for('plan_activate', plan_id=selected.id) }}">
+      <button class="primary-button" type="submit">启用这份计划</button>
+    </form>
+    {% endif %}
+  </div>
 </section>
 {% endif %}
 
@@ -17,9 +30,9 @@
   <section class="panel">
     <details class="import-box" open>
       <summary>粘贴 AI 计划</summary>
-      <p>无需在网站逐项创建。让任意大模型输出下方格式，粘贴一次即可。</p>
-      <form method="post" action="{{ url_for('plan_import') }}">
-        <textarea name="plan_text" rows="15" required placeholder="# 我的计划
+      <p>无需逐项创建。可粘贴 Markdown，也可直接粘贴网页复制的纯文本；系统会识别 #、项目符号和中文“第一天”。</p>
+      <form method="post" action="{{ url_for('plan_import') }}" id="planImportForm">
+        <textarea name="plan_text" id="planImportText" rows="15" required placeholder="# 我的计划
 > 用三天推进一个眼前问题
 ## 修炼任务
 - [进阶] 能够独立判断CV曲线主要问题 | 验收：完成3张盲测判读记录 | 工作区：EG 实验
@@ -27,9 +40,9 @@
 - [重点] 判读一张CV曲线 | 45min | 交付：三句话判读 | 关联修炼：能够独立判断CV曲线主要问题
 - [工具] 整理LJ案例 | 30min | 交付：README或ZIP
 - [可选] 局部精读 | 20min | 交付：词卡或TXT"></textarea>
-        <button class="primary-button full-button">导入并启用</button>
+        <button class="primary-button full-button" id="planImportButton" type="submit">导入并立即进入 Day 1</button>
       </form>
-      <small class="form-help">不要写 XP。即使旧文案含有 XP，系统也会忽略并按时长统一计算：≤20 / ≤45 / ≤75 / ≤120 / 120分钟以上，分别为 6 / 10 / 16 / 22 / 30 修为。</small>
+      <small class="form-help">导入成功后会自动归档旧计划并启用新计划，不删除任何旧任务。不要写 XP；旧文案里的 XP 也会被忽略。</small>
     </details>
   </section>
 
@@ -43,8 +56,25 @@
 
 <section class="panel plan-library">
   <div class="panel-head simple"><div><span class="eyebrow">Plans</span><h2>已有近期计划</h2></div></div>
-  <div class="plan-switcher compact-switcher">{% for plan in plans %}<a class="plan-switch {% if selected and selected.id==plan.id %}active{% endif %}" href="{{ url_for('plans_page') }}?plan_id={{ plan.id }}"><strong>{{ plan.name }}</strong><small>{{ plan.total_days }}天{% if plan.status=='active' %} · 使用中{% endif %}</small></a>{% endfor %}</div>
-  {% if selected and selected.status != 'active' %}<form method="post" action="{{ url_for('plan_activate', plan_id=selected.id) }}"><button class="primary-button">设为当前计划</button></form>{% endif %}
+  <div class="plan-switcher compact-switcher">
+    {% for plan in plans %}
+    <div class="plan-switch-row {% if selected and selected.id==plan.id %}selected{% endif %}">
+      <a class="plan-switch {% if selected and selected.id==plan.id %}active{% endif %}" href="{{ url_for('plans_page') }}?plan_id={{ plan.id }}">
+        <strong>{{ plan.name }}</strong>
+        <small>{{ plan.total_days }}天 · Day {{ plan.current_day }}{% if plan.status=='active' %} · 使用中{% else %} · 已归档{% endif %}</small>
+      </a>
+      {% if plan.status == 'active' %}
+      <a class="plan-row-action active" href="{{ url_for('daily_page') }}">今日</a>
+      {% else %}
+      <form method="post" action="{{ url_for('plan_activate', plan_id=plan.id) }}">
+        <button class="plan-row-action" type="submit">启用</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="empty-state">尚无计划，可在上方粘贴导入。</p>
+    {% endfor %}
+  </div>
 </section>
 
 {% if selected %}

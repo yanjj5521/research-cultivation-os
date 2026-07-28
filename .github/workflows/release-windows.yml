@@ -50,30 +50,39 @@ jobs:
           python self_test.py
           python self_test.py --integration
 
-      - name: Build one-folder executable
+      - name: Build single-file executable
         run: pyinstaller --noconfirm --clean packaging/ResearchOS.spec
 
       - name: Smoke-test packaged executable
         shell: pwsh
         run: |
           $testData = Join-Path $env:RUNNER_TEMP "research-os-smoke"
-          & ".\dist\ResearchOS\ResearchOS.exe" --data-dir $testData --self-check
+          & ".\dist\ResearchOS.exe" --data-dir $testData --self-check
           if ($LASTEXITCODE -ne 0) { throw "Packaged self-check failed." }
 
-      - name: Assemble public ZIP
+      - name: Assemble direct EXE and portable ZIP
         shell: pwsh
         run: |
           $releaseName = "ResearchCultivationOS-v$env:APP_VERSION-Windows-x64"
+          $releaseExeName = "ResearchOS-v$env:APP_VERSION-Windows-x64.exe"
+          $releaseExe = Join-Path "release" $releaseExeName
           $releaseRoot = Join-Path "release" $releaseName
+          New-Item -ItemType Directory -Path "release" -Force | Out-Null
           New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
-          Copy-Item "dist\ResearchOS\*" $releaseRoot -Recurse -Force
+          Copy-Item "dist\ResearchOS.exe" $releaseExe -Force
+          Copy-Item "dist\ResearchOS.exe" (Join-Path $releaseRoot "ResearchOS.exe") -Force
           Copy-Item "packaging\windows\*.cmd" $releaseRoot -Force
           Copy-Item "packaging\USER_README.txt" $releaseRoot -Force
           Copy-Item "VERSION" $releaseRoot -Force
           $zipPath = Join-Path "release" "$releaseName.zip"
           Compress-Archive -Path $releaseRoot -DestinationPath $zipPath -CompressionLevel Optimal
-          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-          "$hash  $releaseName.zip" | Set-Content "release\SHA256SUMS.txt" -Encoding ascii
+          $exeHash = (Get-FileHash $releaseExe -Algorithm SHA256).Hash.ToLower()
+          $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          @(
+            "$exeHash  $releaseExeName"
+            "$zipHash  $releaseName.zip"
+          ) | Set-Content "release\SHA256SUMS.txt" -Encoding ascii
+          "RELEASE_EXE=$releaseExe" | Out-File -FilePath $env:GITHUB_ENV -Append
           "RELEASE_ZIP=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload workflow artifact
@@ -81,6 +90,7 @@ jobs:
         with:
           name: ResearchCultivationOS-v${{ env.APP_VERSION }}-Windows-x64
           path: |
+            ${{ env.RELEASE_EXE }}
             ${{ env.RELEASE_ZIP }}
             release/SHA256SUMS.txt
           if-no-files-found: error
@@ -107,6 +117,7 @@ jobs:
             exit 0
           }
           gh release create $tag `
+            $env:RELEASE_EXE `
             $env:RELEASE_ZIP `
             "release\SHA256SUMS.txt" `
             --repo $env:GITHUB_REPOSITORY `

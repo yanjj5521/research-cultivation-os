@@ -53,6 +53,8 @@ CATEGORY_ALIASES = {
     "主线": "重点",
     "核心": "重点",
     "重点": "重点",
+    "必做": "重点",
+    "每日": "重点",
     "main": "重点",
     "工具": "工具",
     "md": "工具",
@@ -62,14 +64,87 @@ CATEGORY_ALIASES = {
     "英语": "补给",
     "文献": "补给",
     "可选": "可选",
+    "选做": "可选",
     "加练": "可选",
     "bonus": "可选",
+}
+
+CHINESE_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
 }
 
 
 def _to_int(value: str, default: int) -> int:
     match = re.search(r"\d+", value or "")
     return int(match.group()) if match else default
+
+
+def _day_number(value: str) -> int | None:
+    value = (value or "").strip()
+    if value.isdigit():
+        return int(value)
+    if not value or any(char not in CHINESE_DIGITS and char != "十" for char in value):
+        return None
+    if "十" not in value:
+        return CHINESE_DIGITS.get(value)
+    before, after = value.split("十", 1)
+    tens = CHINESE_DIGITS.get(before, 1) if before else 1
+    ones = CHINESE_DIGITS.get(after, 0) if after else 0
+    return tens * 10 + ones
+
+
+def _plain_line(raw: str) -> tuple[int, str]:
+    """Return Markdown heading level and copy-friendly visible text."""
+    line = (raw or "").strip().replace("\u00a0", " ").replace("\u3000", " ")
+    heading = re.match(r"^(#{1,6})\s*(.*?)\s*#*\s*$", line)
+    level = len(heading.group(1)) if heading else 0
+    visible = heading.group(2) if heading else line
+    # ChatGPT's copy button normally keeps Markdown, while mouse-selection may
+    # leave only rendered text. Removing lightweight emphasis supports both.
+    visible = visible.replace("**", "").replace("__", "").strip()
+    return level, visible
+
+
+def _day_heading(value: str, heading_level: int = 0) -> tuple[int, str] | None:
+    patterns = [
+        r"^day\s*([0-9一二两三四五六七八九十〇零]+)\s*(?:天|日)?\s*(.*)$",
+        r"^第\s*([0-9一二两三四五六七八九十〇零]+)\s*(?:天|日)\s*(.*)$",
+    ]
+    if heading_level >= 2:
+        patterns.append(r"^([0-9一二两三四五六七八九十〇零]+)\s*(?:天|日)?\s*(.*)$")
+    for pattern in patterns:
+        match = re.match(pattern, value, re.I)
+        if not match:
+            continue
+        index = _day_number(match.group(1))
+        if index is None or index < 1:
+            return None
+        title = re.sub(r"^[|｜·—–\-:：]\s*", "", match.group(2).strip())
+        return index, title or f"第 {index} 日"
+    return None
+
+
+def _task_line(value: str) -> tuple[str, str] | None:
+    task = re.match(
+        r"^(?:[-*+•▪▫‣]\s*|(?:\d+)[.)、]\s*)(?:\[([^\]]+)\])?\s*(.+)$",
+        value,
+    )
+    if not task:
+        task = re.match(r"^\[([^\]]+)\]\s*(.+)$", value)
+    if not task:
+        return None
+    return (task.group(1) or "").strip(), task.group(2).replace("**", "").replace("__", "").strip()
 
 
 def _clean_category(value: str) -> tuple[str, bool]:
@@ -96,6 +171,7 @@ def parse_plan_text(text: str) -> PlanSpec:
         raise ValueError("计划文案不能为空")
 
     name = "AI导入计划"
+    name_found = False
     description_parts: list[str] = []
     days: list[DaySpec] = []
     cultivation_tasks: list[CultivationTaskSpec] = []
@@ -103,45 +179,52 @@ def parse_plan_text(text: str) -> PlanSpec:
     section = ""
 
     for raw in source.splitlines():
-        line = raw.strip()
+        heading_level, line = _plain_line(raw)
         if not line:
             continue
-        if line.startswith("# ") and not line.startswith("## "):
-            name = line[2:].strip() or name
+        if line.startswith("```"):
             continue
         if line.startswith(">"):
             description_parts.append(line.lstrip("> ").strip())
             continue
-        if re.match(r"^#{2,4}\s*(修炼任务|能力目标|成果里程碑)\s*$", line, re.I):
+        if re.fullmatch(r"(修炼任务|能力目标|成果里程碑)\s*[：:]?", line, re.I):
             current = None
             section = "cultivation"
             continue
-        heading = re.match(r"^#{2,4}\s*(?:Day|第)?\s*(\d+)\s*(?:天|日)?\s*(?:[|｜·—:-]\s*)?(.*)$", line, re.I)
+        heading = _day_heading(line, heading_level)
         if heading:
-            index = int(heading.group(1))
-            title = heading.group(2).strip() or f"第 {index} 日"
+            index, title = heading
             current = DaySpec(index=index, title=title)
             days.append(current)
             section = "daily"
             continue
-        task = re.match(r"^[-*+]\s*(?:\[([^\]]+)\])?\s*(.+)$", line)
+        if heading_level == 1:
+            name = line or name
+            name_found = True
+            continue
+        task = _task_line(line)
         if not task:
+            if not section and not name_found:
+                name = line
+                name_found = True
+            elif not section:
+                description_parts.append(line)
             continue
         if section == "cultivation":
-            marker = (task.group(1) or "小成").strip().lower()
+            marker = (task[0] or "小成").strip().lower()
             difficulty = {
                 "1": 1, "小成": 1, "基础": 1, "入门": 1,
                 "2": 2, "进阶": 2, "熟练": 2,
                 "3": 3, "突破": 3, "挑战": 3,
             }.get(marker, 1)
-            parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task.group(2)) if part.strip()]
+            parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task[1]) if part.strip()]
             if not parts:
                 continue
             description = ""
             deliverable = ""
             workspace_name = ""
             for part in parts[1:]:
-                if re.match(r"^(交付|验收|证据|达成标准)[：:]", part):
+                if re.match(r"^(交付|交付物|验收|证据|达成标准)[：:]", part):
                     deliverable = re.split(r"[：:]", part, maxsplit=1)[1].strip()
                 elif re.match(r"^(说明|描述)[：:]", part):
                     description = re.split(r"[：:]", part, maxsplit=1)[1].strip()
@@ -164,8 +247,8 @@ def parse_plan_text(text: str) -> PlanSpec:
             continue
         if current is None:
             continue
-        category, optional = _clean_category(task.group(1) or "重点")
-        parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task.group(2)) if part.strip()]
+        category, optional = _clean_category(task[0] or "重点")
+        parts = [part.strip() for part in re.split(r"\s*[|｜]\s*", task[1]) if part.strip()]
         if not parts:
             continue
         title = parts[0]
@@ -180,7 +263,7 @@ def parse_plan_text(text: str) -> PlanSpec:
             elif "xp" in lower or "修为" in part or "经验" in part:
                 # Accepted only for backward compatibility; deliberately ignored.
                 continue
-            elif re.match(r"^(交付|证据|产出)[：:]", part):
+            elif re.match(r"^(交付|交付物|证据|产出)[：:]", part):
                 deliverable = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             elif re.match(r"^(关联修炼|修炼任务|关联目标)[：:]", part):
                 cultivation_title = re.split(r"[：:]", part, maxsplit=1)[1].strip()
@@ -200,10 +283,20 @@ def parse_plan_text(text: str) -> PlanSpec:
             )
         )
 
-    days = sorted({day.index: day for day in days}.values(), key=lambda item: item.index)
-    if not days:
-        raise ValueError("没有识别到 Day 1 / 第1天 等日标题")
+    merged_days: dict[int, DaySpec] = {}
     for day in days:
+        if day.index in merged_days:
+            merged_days[day.index].missions.extend(day.missions)
+        else:
+            merged_days[day.index] = day
+    days = sorted(merged_days.values(), key=lambda item: item.index)
+    if not days:
+        raise ValueError("没有识别到日标题。请保留 Day 1 / 第1天；可直接粘贴带或不带 # 的完整计划。")
+    # A copied answer can occasionally skip or repeat a visible number. Recent
+    # plans are always stored as a contiguous sequence so “下一天” never opens
+    # an empty page.
+    for normalized_index, day in enumerate(days, start=1):
+        day.index = normalized_index
         if not day.missions:
             day.missions.append(MissionSpec(category="重点", title=day.title, duration_minutes=30))
     return PlanSpec(

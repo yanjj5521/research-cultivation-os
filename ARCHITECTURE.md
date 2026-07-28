@@ -1,4 +1,4 @@
-# 问道科研 v2.1.0 架构
+# 问道科研 v2.1.1 架构
 
 ## 1. 设计目标
 
@@ -271,16 +271,16 @@ records/workspaces.json
 - 安全升级：校验 ZIP 路径、安装到新目录、迁移数据、保留旧目录；
 - 公开仓库：忽略数据库、附件、`.env`、Token、密钥与生成包。
 
-正式 Windows 发行采用 PyInstaller one-folder 结构：`ResearchOS.exe` 只是启动入口，依赖仍放在相邻程序目录，便于诊断和整包替换。普通模式把个人数据写入 `%LOCALAPPDATA%\ResearchCultivationOS`；放置 `portable.flag` 或运行“便携模式启动.cmd”时改写到发行目录旁的 `user_data/`。源码模式继续使用仓库内的 `instance/` 与 `storage/`，以兼容既有开发流程。
+正式 Windows 发行采用 PyInstaller one-file 结构：GitHub Release 直接提供可双击的单个 EXE，运行时由 PyInstaller 在系统临时目录展开只读程序资源。普通模式把个人数据写入 `%LOCALAPPDATA%\ResearchCultivationOS`，因此 EXE 更新或临时展开目录变化不会触碰数据库与附件；便携 ZIP 中的“便携模式启动.cmd”则把数据改写到发行目录旁的 `user_data/`。源码模式继续使用仓库内的 `instance/` 与 `storage/`，以兼容既有开发流程。
 
 更新边界固定为：
 
 ```text
-可替换：ResearchOS.exe、_internal/、版本说明
+可替换：ResearchOS.exe、版本说明
 必须保留：instance/、storage/、user_config/、user_data/
 ```
 
-GitHub `main` 只承载通过回归的公开稳定源码，GitHub Releases 承载普通用户下载的 Windows ZIP；未完成开发保存在另一个本地工作树或私有仓库，不推送到公开分支。公开仓库中的任何分支都不能承担“隐藏开发源码”的职责。
+GitHub `main` 只承载通过回归的公开稳定源码，GitHub Releases 以 Windows EXE 为首要下载并保留便携 ZIP；未完成开发保存在另一个本地工作树或私有仓库，不推送到公开分支。公开仓库中的任何分支都不能承担“隐藏开发源码”的职责。
 
 轻量中心首次初始化只建立一个管理员。一次性凭据只写入主机 `instance/HUB_ADMIN_CREDENTIALS.txt`，被 Git、便携包和安全升级排除；管理员首次修改密码后该文件自动销毁。成员注册固定为 `member`，网页没有自助提权入口。
 

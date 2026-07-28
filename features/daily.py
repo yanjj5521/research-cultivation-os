@@ -128,6 +128,22 @@ def _insert_plan(conn, spec: PlanSpec, make_active: bool = True) -> int:
     return plan_id
 
 
+def _activate_plan(conn, plan_id: int) -> bool:
+    row = conn.execute("SELECT id FROM study_plans WHERE id=?", (plan_id,)).fetchone()
+    if not row:
+        return False
+    ts = now_iso()
+    conn.execute(
+        "UPDATE study_plans SET status='archived' WHERE status='active' AND id<>?",
+        (plan_id,),
+    )
+    conn.execute(
+        "UPDATE study_plans SET status='active',updated_at=? WHERE id=?",
+        (ts, plan_id),
+    )
+    return True
+
+
 def ensure_default_plan() -> None:
     with connect() as conn:
         count = conn.execute("SELECT COUNT(*) n FROM study_plans").fetchone()["n"]
@@ -465,7 +481,7 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
         )
 
     @router.post("/plans/import", name="plan_import")
-    def plan_import(request: Request, plan_text: str = Form(...)):
+    def plan_import(request: Request, plan_text: str = Form("")):
         try:
             spec = parse_plan_text(plan_text)
         except ValueError as exc:
@@ -480,21 +496,22 @@ def register_daily_routes(app, templates, context: Callable[..., dict[str, Any]]
             conn.commit()
         flash(
             request,
-            f"已导入 {len(spec.days)} 天计划"
+            f"已导入并启用“{spec.name}”，共 {len(spec.days)} 天"
             f"{f'，并新增 {len(spec.cultivation_tasks)} 项独立修炼任务' if spec.cultivation_tasks else ''}。"
-            "经验值已按系统统一规则计算。",
+            "正在进入 Day 1；经验值已按系统统一规则计算。",
             "success",
         )
-        return RedirectResponse(f"{request.url_for('plans_page')}?plan_id={plan_id}", status_code=303)
+        return RedirectResponse(f"{request.url_for('daily_page')}?day=1", status_code=303)
 
     @router.post("/plans/{plan_id}/activate", name="plan_activate")
     def plan_activate(request: Request, plan_id: int):
         with connect() as conn:
-            conn.execute("UPDATE study_plans SET status='archived'")
-            conn.execute("UPDATE study_plans SET status='active',updated_at=? WHERE id=?", (now_iso(), plan_id))
+            if not _activate_plan(conn, plan_id):
+                flash(request, "没有找到这份计划，当前计划未被改变。", "error")
+                return go(request, "plans_page")
             conn.commit()
-        flash(request, "当前计划已切换。", "success")
-        return go(request, "daily_page")
+        flash(request, "已设为当前计划，继续上次所在的 Day。", "success")
+        return RedirectResponse(f"{request.url_for('daily_page')}", status_code=303)
 
     @router.post("/plans/{plan_id}/day", name="plan_set_day")
     def plan_set_day(request: Request, plan_id: int, current_day: int = Form(...)):

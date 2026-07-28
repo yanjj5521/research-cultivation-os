@@ -13,6 +13,7 @@ from services.progression import (
     fixed_daily_xp,
     normalize_realm_labels,
 )
+from version import APP_VERSION
 from workspace_profiles import DEFAULT_WORKSPACES, profile_for
 
 DB_PATH = INSTANCE_DIR / "research_os.db"
@@ -657,7 +658,7 @@ def init_db() -> None:
             "ai_mode": "offline",
             "ai_endpoint": "http://127.0.0.1:11434/api/generate",
             "ai_model": "qwen2.5:7b",
-            "portable_version": "2.1.0",
+            "portable_version": APP_VERSION,
             "foundation_master_text": "",
             "hub_url": "",
             "hub_api_token": "",
@@ -718,7 +719,10 @@ def init_db() -> None:
             "UPDATE settings SET value=? WHERE key='nav_labels'",
             (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
         )
-        conn.execute("UPDATE settings SET value='2.1.0' WHERE key='portable_version'")
+        conn.execute(
+            "UPDATE settings SET value=? WHERE key='portable_version'",
+            (APP_VERSION,),
+        )
         ts = now_iso()
         for workspace in DEFAULT_WORKSPACES:
             profile = profile_for(workspace["module"])

@@ -1,4 +1,4 @@
-# v2.1.0 设计依据
+# v2.1.1 设计依据
 
 本文件记录截至 2026-07-28 采用的外部依据与后续使用反馈。v2.1 保留 v2.0.2 的轻量山门和全部原有入口，只在底部补连续性状态；同时让六类默认工作区拥有不同证据链，并把正式 EXE 与源码开发、程序与个人数据分开。
 
@@ -108,7 +108,7 @@ MLflow 把一次机器学习运行组织为参数、指标和产物，并在模�
 
 ## EXE 发行与源码开发分离
 
-Python 官方将 Windows embeddable distribution 定位为其他应用的一部分；PyInstaller 则能把解释器和依赖一并打包，让没有安装 Python 的用户运行程序。v2.1 采用 PyInstaller one-folder，而不是 one-file：启动稍快、文件问题更容易定位、更新也能以完整目录为单位验证。
+Python 官方将 Windows embeddable distribution 定位为其他应用的一部分；PyInstaller 则能把解释器和依赖一并打包，让没有安装 Python 的用户运行程序。v2.1.1 采用 PyInstaller one-file 作为普通用户的首要下载：GitHub Release 页面直接得到一个 EXE，减少“下载源码 ZIP、漏解压 `_internal`、只拖出启动器”等误操作。个人数据始终位于 `%LOCALAPPDATA%`，因此 one-file 的临时展开不承担持久数据职责；需要迁移、U 盘模式和诊断时仍保留便携 ZIP。
 
 程序与数据采用不同生命周期：
 

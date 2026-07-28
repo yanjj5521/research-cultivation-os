@@ -17,6 +17,8 @@ from services.progression import (
     TRIBULATION_GATES,
     realm_state,
 )
+from services.plan_import import parse_plan_text
+from version import APP_VERSION
 
 
 def _check_response(failures: list[str], label: str, response, expected: int = 200) -> None:
@@ -24,8 +26,36 @@ def _check_response(failures: list[str], label: str, response, expected: int = 2
         failures.append(f"{label}: HTTP {response.status_code}")
 
 
+def _check_plan_copy_parser(failures: list[str]) -> None:
+    rendered_copy = """**电化学资产化入门计划**
+用5天把电化学学习转化为可复用的概念表、计算模板、判读清单和案例记录
+
+修炼任务
+• [进阶] 建立电化学最小概念与计算资产 | 验收：概念表与计算模板
+
+第一天｜电化学量纲
+• [必做] 串起 Q、I、V、C、E 与 P | 45分钟 | 交付物：一张概念图 | 关联修炼：建立电化学最小概念与计算资产
+
+第三天：CV 判读
+[可选] 对比两张 CV 曲线 | 20min | 交付：三句话判读
+"""
+    try:
+        parsed = parse_plan_text(rendered_copy)
+    except ValueError as exc:
+        failures.append(f"rendered plan copy was rejected: {exc}")
+        return
+    if parsed.name != "电化学资产化入门计划":
+        failures.append("rendered plan copy lost its plain-text title")
+    if [day.index for day in parsed.days] != [1, 2]:
+        failures.append("copied non-contiguous day labels were not normalized")
+    if len(parsed.days) != 2 or not parsed.days[0].missions:
+        failures.append("rendered plan copy did not create daily missions")
+    elif parsed.days[0].missions[0].deliverable != "一张概念图":
+        failures.append("rendered plan copy lost its deliverable field")
+
+
 def _run_integration(client: TestClient, failures: list[str]) -> None:
-    """Exercise the complete v2.1.0 loop.
+    """Exercise the complete current release loop.
 
     This mode writes test records, so run it only against a disposable copy:
     `python self_test.py --integration`.
@@ -65,6 +95,52 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         failures.append("imported XP was not ignored in favor of the fixed duration rule")
     if "999XP" in plan["source_text"] or "888经验" in plan["source_text"]:
         failures.append("custom reward fields were not removed from the normalized plan text")
+    if plan["status"] != "active":
+        failures.append("imported plan was not activated")
+
+    copied_plan = """电化学资产化入门计划
+用5天形成可复用的电化学资产
+修炼任务
+• [进阶] 建立电化学最小概念与计算资产 | 验收：概念表与计算模板
+第一天｜量纲起点
+• [重点] 完成 Q-I-V-C-E-P 概念图 | 45分钟 | 交付：概念图
+第二天｜CV 判读
+• [可选] 判读一张 CV 曲线 | 20min | 交付：三句话判读
+"""
+    copied_response = client.post("/plans/import", data={"plan_text": copied_plan})
+    _check_response(failures, "rendered-copy plan import", copied_response)
+    with connect() as conn:
+        copied = conn.execute(
+            "SELECT * FROM study_plans WHERE name='电化学资产化入门计划' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        active_count = conn.execute(
+            "SELECT COUNT(*) n FROM study_plans WHERE status='active'"
+        ).fetchone()["n"]
+    if not copied or copied["status"] != "active" or active_count != 1:
+        failures.append("rendered-copy import did not become the only active plan")
+    elif "/daily" not in str(copied_response.url):
+        failures.append("successful plan import did not enter the daily page")
+
+    activate_response = client.post(f"/plans/{plan['id']}/activate")
+    _check_response(failures, "archived plan activation", activate_response)
+    with connect() as conn:
+        restored = conn.execute(
+            "SELECT status FROM study_plans WHERE id=?", (plan["id"],)
+        ).fetchone()
+        active_count = conn.execute(
+            "SELECT COUNT(*) n FROM study_plans WHERE status='active'"
+        ).fetchone()["n"]
+    if not restored or restored["status"] != "active" or active_count != 1:
+        failures.append("archived plan activation did not switch atomically")
+
+    invalid_activation = client.post("/plans/999999999/activate")
+    _check_response(failures, "invalid plan activation", invalid_activation)
+    with connect() as conn:
+        still_active = conn.execute(
+            "SELECT id FROM study_plans WHERE status='active'"
+        ).fetchall()
+    if [int(row["id"]) for row in still_active] != [int(plan["id"])]:
+        failures.append("invalid activation changed the current plan")
 
     _check_response(
         failures,
@@ -727,16 +803,21 @@ def main() -> None:
         "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
     ]
     failures = []
+    _check_plan_copy_parser(failures)
     for page in pages:
         response = client.get(page)
         _check_response(failures, page, response)
     daily_navigation = client.get("/daily")
+    current_nav_labels = app.navigation_labels()
     navigation_groups = [
-        "今日修炼",
-        "知识与交付",
-        "我的工作区",
-        "秘境与成长",
-        "协作与系统",
+        current_nav_labels[key]
+        for key in (
+            "group_cultivation",
+            "group_knowledge",
+            "group_workspaces",
+            "group_growth",
+            "group_system",
+        )
     ]
     group_positions = [daily_navigation.text.find(label) for label in navigation_groups]
     if any(position < 0 for position in group_positions):
@@ -822,8 +903,8 @@ def main() -> None:
         ).fetchone()["n"]
         if pinned_defaults != 6:
             failures.append("six default workspaces were not pinned on first initialization")
-    if get_setting("portable_version") != "2.1.0":
-        failures.append("portable version was not migrated to 2.1.0")
+    if get_setting("portable_version") != APP_VERSION:
+        failures.append(f"portable version was not migrated to {APP_VERSION}")
     if len(REALM_STAGES) != 39:
         failures.append(f"realm system expected 39 stages, got {len(REALM_STAGES)}")
     requirements = [stage.required_xp for stage in REALM_STAGES[1:]]
@@ -853,7 +934,7 @@ def main() -> None:
     if integration:
         print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
     else:
-        print("Core pages, v2.1.0 light mountain-gate dashboard, composable workspaces, sync guardrails, knowledge export and separated local data are ready.")
+        print(f"Core pages, v{APP_VERSION} light mountain-gate dashboard, composable workspaces, sync guardrails, knowledge export and separated local data are ready.")
 
 
 if __name__ == "__main__":

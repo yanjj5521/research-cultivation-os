@@ -71,6 +71,14 @@
     }
   });
 
+  const planImportForm = document.getElementById('planImportForm');
+  const planImportButton = document.getElementById('planImportButton');
+  planImportForm?.addEventListener('submit', () => {
+    if (!planImportButton) return;
+    planImportButton.disabled = true;
+    planImportButton.textContent = '正在解析并启用…';
+  });
+
   const retreatTime = document.getElementById('retreatTime');
   if (retreatTime) {
     const storageKey = 'research-cultivation-retreat-v1';

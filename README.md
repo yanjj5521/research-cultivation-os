@@ -1,6 +1,6 @@
-# 问道科研 · Research Cultivation OS v2.1.0
+# 问道科研 · Research Cultivation OS v2.1.1
 
-> Windows 普通用户：前往 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest)，下载 `ResearchCultivationOS-*-Windows-x64.zip`，完整解压后双击 `ResearchOS.exe`。无需 Python、pip 或管理员权限。
+> Windows 普通用户：前往 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest)，下载单个 `ResearchOS-*-Windows-x64.exe` 后直接双击。无需解压、Python、pip 或管理员权限。
 
 一个本地优先、交付驱动的个人科研操作系统。轻量同行会仍可兼容小团队，但 v2.0 默认关闭联机，只预留未来规模化后端接口。
 
@@ -16,6 +16,16 @@
 ```
 
 修仙外观可以自定义，经验规则和科研数据结构保持稳定；漏一天不会清空长期成长，奖励只来自可追溯的真实行动。
+
+## v2.1.1：近期计划修复与单文件 EXE
+
+- “导入并启用”成功后直接进入新计划 Day 1；
+- 计划库为每份归档计划提供可见的“启用”按钮，不再先点开再寻找入口；
+- 归档计划预览不再错误显示为“正在使用”，无效计划编号也不会清空当前计划；
+- 支持粘贴 Markdown 或网页复制的纯文本，包括 `•` 项目符号、“第一天/Day 1”和缺失 `#` 的标题；
+- 首页原有结构不变，小于 11px 的主要说明文字做了克制放大；
+- GitHub Release 直接提供单个 Windows x64 EXE；便携 ZIP 仅作为迁移与 U 盘模式备用；
+- 打包后自检会真实提交计划表单、验证自动启用与归档计划切换。
 
 ## v2.1.0：轻量山门、组合工作区与正式 Windows 发行
 
@@ -58,7 +68,7 @@ ML 工作区强调数据版本与拆分、特征管线、运行参数、指标�
 - GitHub `Releases` 是普通用户唯一需要接触的公开下载入口；
 - `main` 只接收已经通过回归、打包自检和数据迁移测试的稳定版本；
 - 未完成开发不直接堆在 `main`，应保存在本机独立开发工作区或单独的私有仓库；
-- 发布流水线在 Windows runner 上构建 one-folder EXE，上传版本 ZIP 与 `SHA256SUMS.txt`；
+- 发布流水线在 Windows runner 上构建 one-file EXE，直接上传 EXE、便携 ZIP 与 `SHA256SUMS.txt`；
 - GitHub 的公开仓库分支都是公开的，不能用一个所谓“开发分支”隐藏源码。需要保密时必须使用另一个私有仓库。
 
 ## 管理员与联机稳定性
@@ -131,13 +141,15 @@ AI 生成 3–7 天近期计划
 
 ### Windows
 
-公开发行版完整解压后双击：
+公开发行版下载后直接双击：
 
 ```text
-ResearchOS.exe
+ResearchOS-v2.1.1-Windows-x64.exe
 ```
 
 默认打开 `http://127.0.0.1:5000`。无需管理员权限，也不会调用系统 Python。
+
+需要 U 盘模式、旧版数据迁移或桌面快捷方式时，再下载同一 Release 中的便携 ZIP，完整解压后使用其中的辅助 CMD。
 
 源码开发模式仍可双击 `启动科研系统.cmd`，它会在当前源码目录创建 `.venv`；该 CMD 只用于开发和诊断，不作为普通用户发布入口。
 
