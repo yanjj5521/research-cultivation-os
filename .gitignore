@@ -51,6 +51,10 @@ hub_admin_credentials.txt
 *.gz
 *.7z
 user_data/
+hub_data/
+user_config/
+build/
+dist/
 release/
 
 # OS / editor

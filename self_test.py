@@ -18,6 +18,7 @@ from services.progression import (
     realm_state,
 )
 from services.plan_import import parse_plan_text
+from services.scholar_search import parse_crossref_payload
 from version import APP_VERSION
 
 
@@ -52,6 +53,43 @@ def _check_plan_copy_parser(failures: list[str]) -> None:
         failures.append("rendered plan copy did not create daily missions")
     elif parsed.days[0].missions[0].deliverable != "一张概念图":
         failures.append("rendered plan copy lost its deliverable field")
+
+
+def _check_scholar_parser(failures: list[str]) -> None:
+    payload = {
+        "message": {
+            "items": [
+                {
+                    "title": ["Evidence-gated research"],
+                    "DOI": "10.1234/self-test",
+                    "author": [{"given": "Lin", "family": "Qiu"}],
+                    "published": {"date-parts": [[2025, 7, 1]]},
+                    "container-title": ["Research Methods"],
+                    "is-referenced-by-count": "not-a-number",
+                    "URL": "https://doi.org/10.1234/self-test",
+                },
+                {
+                    "title": ["Unsafe source link"],
+                    "URL": "javascript:alert(1)",
+                }
+            ]
+        }
+    }
+    works = parse_crossref_payload(payload)
+    if len(works) != 2:
+        failures.append("Crossref parser did not return normalized works")
+        return
+    item = works[0]
+    if (
+        item.get("title") != "Evidence-gated research"
+        or item.get("doi") != "10.1234/self-test"
+        or item.get("year") != 2025
+        or item.get("authors") != "Lin Qiu"
+        or item.get("cited_by") != 0
+    ):
+        failures.append("Crossref parser lost core scholarly metadata")
+    if works[1].get("url"):
+        failures.append("Crossref parser kept an unsafe source URL")
 
 
 def _run_integration(client: TestClient, failures: list[str]) -> None:
@@ -141,6 +179,130 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         ).fetchall()
     if [int(row["id"]) for row in still_active] != [int(plan["id"])]:
         failures.append("invalid activation changed the current plan")
+
+    project_response = client.post(
+        "/projects/new",
+        data={
+            "title": "自检证据闸门课题",
+            "research_question": "压实改变电子通路后，离子可达性是否成为限制步骤？",
+            "rationale": "区分电子连通、离子可达与界面储能。",
+            "target_outcome": "形成可复核的电子—离子失配证据链。",
+            "success_criteria": "至少 3 批重复，主结论由阻抗与电容两类证据共同支持。",
+            "current_state": "已有一组预实验 CV。",
+            "constraints_text": "样品和仪器时间有限。",
+            "search_query": "",
+        },
+        follow_redirects=False,
+    )
+    _check_response(failures, "research project create", project_response, 303)
+    with connect() as conn:
+        project = conn.execute(
+            "SELECT * FROM research_projects WHERE title='自检证据闸门课题' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        milestones = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order,id",
+                (project["id"],),
+            )
+        ] if project else []
+    if not project or len(milestones) != 5:
+        failures.append("research project did not initialize five evidence gates")
+    else:
+        active_gates = [item for item in milestones if item["status"] == "active"]
+        if len(active_gates) != 1:
+            failures.append("research project did not initialize exactly one active gate")
+        project_page = client.get(f"/projects/{project['id']}")
+        _check_response(failures, "research project page", project_page)
+        for marker in ("证据闸门", "Go / Revise / Stop", "联网查找相关先例", "Crossref"):
+            if marker not in project_page.text:
+                failures.append(f"research project page missed: {marker}")
+
+        first = milestones[0]
+        _check_response(
+            failures,
+            "empty project gate rejection",
+            client.post(
+                f"/projects/{project['id']}/milestones/{first['id']}/save",
+                data={
+                    "title": first["title"],
+                    "criterion": first["criterion"],
+                    "deliverable": first["deliverable"],
+                    "status": "passed",
+                },
+            ),
+        )
+        with connect() as conn:
+            unchanged = conn.execute(
+                "SELECT status FROM project_milestones WHERE id=?", (first["id"],)
+            ).fetchone()
+        if not unchanged or unchanged["status"] != "active":
+            failures.append("an evidence gate passed without evidence or a decision")
+
+        _check_response(
+            failures,
+            "evidence-backed project gate",
+            client.post(
+                f"/projects/{project['id']}/milestones/{first['id']}/save",
+                data={
+                    "title": first["title"],
+                    "criterion": first["criterion"],
+                    "deliverable": first["deliverable"],
+                    "status": "passed",
+                    "evidence": "已保存一页问题定义卡并写明对照与边界。",
+                    "decision": "Go：问题已可检验。",
+                },
+            ),
+        )
+        with connect() as conn:
+            gate_states = [
+                row["status"]
+                for row in conn.execute(
+                    "SELECT status FROM project_milestones WHERE project_id=? ORDER BY sort_order,id",
+                    (project["id"],),
+                )
+            ]
+        if gate_states[:2] != ["passed", "active"]:
+            failures.append("passing one project gate did not activate the next gate")
+
+        _check_response(
+            failures,
+            "project precedent save",
+            client.post(
+                f"/projects/{project['id']}/cases/save",
+                data={
+                    "provider": "Crossref",
+                    "external_id": "10.1234/self-test",
+                    "title": "Evidence-gated research",
+                    "authors": "Lin Qiu",
+                    "publication_year": "2025",
+                    "source": "Research Methods",
+                    "doi": "10.1234/self-test",
+                    "url": "https://doi.org/10.1234/self-test",
+                    "cited_by": "7",
+                    "relation": "baseline",
+                },
+            ),
+        )
+        _check_response(
+            failures,
+            "project evidence update",
+            client.post(
+                f"/projects/{project['id']}/updates/new",
+                data={
+                    "update_type": "evidence",
+                    "summary": "科学问题已被压缩为一个可检验命题。",
+                    "evidence": "问题定义卡",
+                    "next_action": "筛选三篇直接先例。",
+                    "confidence": "65",
+                },
+            ),
+        )
+        project_plan = client.get(f"/projects/{project['id']}/plan")
+        _check_response(failures, "project short-plan bridge", project_plan)
+        for marker in ("三日推进计划", "导入并立即进入 Day 1", "自检证据闸门课题"):
+            if marker not in project_plan.text:
+                failures.append(f"project short-plan bridge missed: {marker}")
 
     _check_response(
         failures,
@@ -747,6 +909,8 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             failures.append("knowledge export did not create Markdown entries")
         if not any(name.startswith("attachments/") for name in names):
             failures.append("knowledge export did not include original attachments")
+        if "records/research_projects.json" not in names:
+            failures.append("knowledge export did not include research projects")
     except zipfile.BadZipFile:
         failures.append("portable knowledge export was not a valid ZIP")
 
@@ -800,10 +964,11 @@ def main() -> None:
     client = TestClient(app.app)
     pages = [
         "/", "/cultivation", "/daily", "/review", "/trials", "/retreat", "/alchemy", "/world", "/profile", "/plans",
-        "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
+        "/projects", "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
     ]
     failures = []
     _check_plan_copy_parser(failures)
+    _check_scholar_parser(failures)
     for page in pages:
         response = client.get(page)
         _check_response(failures, page, response)
@@ -850,7 +1015,15 @@ def main() -> None:
     try:
         with zipfile.ZipFile(io.BytesIO(knowledge_export.content)) as archive:
             names = set(archive.namelist())
-        if not {"README.md", "manifest.json", "knowledge.json"}.issubset(names):
+        if not {
+            "README.md",
+            "manifest.json",
+            "knowledge.json",
+            "records/research_projects.json",
+            "records/project_milestones.json",
+            "records/project_cases.json",
+            "records/project_updates.json",
+        }.issubset(names):
             failures.append("knowledge export missed its portable index files")
     except zipfile.BadZipFile:
         failures.append("knowledge export was not a valid ZIP")
@@ -860,7 +1033,8 @@ def main() -> None:
             "player_profile", "easter_eggs", "track_growth", "online_sync_queue", "online_sync_cache",
             "review_sources", "review_sessions", "review_session_sources", "review_answers",
             "review_snoozes", "realm_tribulations", "special_tasks", "herb_inventory",
-            "workspaces",
+            "workspaces", "research_projects", "project_milestones", "project_cases",
+            "project_updates",
         }
         found = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         missing = sorted(required_tables - found)

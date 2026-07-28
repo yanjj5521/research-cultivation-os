@@ -1,6 +1,20 @@
-# v2.1.1 设计依据
+# v2.2.0 设计依据
 
-本文件记录截至 2026-07-28 采用的外部依据与后续使用反馈。v2.1 保留 v2.0.2 的轻量山门和全部原有入口，只在底部补连续性状态；同时让六类默认工作区拥有不同证据链，并把正式 EXE 与源码开发、程序与个人数据分开。
+本文件记录截至 2026-07-28 采用的外部依据与后续使用反馈。v2.2 保留轻量山门与个性化工作区，同时增加证据驱动的课题推进，并把个人节点 EXE、轻量中心 EXE、源码开发和两类运行数据清晰分开。
+
+## 课题推进使用证据闸门
+
+NIH 的转化研究里程碑指导强调可量化的成功标准、时间线以及明确的 go/no-go 决策；UKRI 的逻辑模型则把投入、活动、输出、结果和影响沿证据链连接。OSF Projects 说明了一个科研项目还需要可组织、可协作、可保留的模块化材料，而不只是待办清单。
+
+因此课题推进不按登录天数或主观工时计算进度：
+
+- 建立课题时分别记录科学问题、价值、目标成果、成功标准、当前基础和现实约束；
+- 默认生成五个可修改的证据闸门，每个闸门保存通过条件、最小交付、证据与决策；
+- 空白闸门不能直接通过；通过当前闸门后才激活下一闸门；
+- 失败和停止属于可以记录理由的科研结论，不被伪装成“进度落后”；
+- 三日推进计划只负责把当前闸门变成短周期行动，不锁定长期路线。
+
+Crossref REST API 提供无需注册的公开书目元数据查询。v2.2 使用固定 Crossref 地址按需检索，只保存题名、作者、年份、来源、DOI 等公开元数据和本人的关系判断；不自动抓取全文，也不在首页加载时发送关键词。OpenAlex 当前要求 API Key，因而不再作为默认零配置入口。
 
 ## 修炼任务与每日任务分层
 
@@ -106,13 +120,14 @@ MLflow 把一次机器学习运行组织为参数、指标和产物，并在模�
 
 所有推荐搭配都能逐项修改和一键恢复。类型变更时不会自动抹掉用户当前设置；只有用户明确点击“恢复推荐搭配”才重置流程与组件。
 
-## EXE 发行与源码开发分离
+## 双 EXE 发行与源码开发分离
 
-Python 官方将 Windows embeddable distribution 定位为其他应用的一部分；PyInstaller 则能把解释器和依赖一并打包，让没有安装 Python 的用户运行程序。v2.1.1 采用 PyInstaller one-file 作为普通用户的首要下载：GitHub Release 页面直接得到一个 EXE，减少“下载源码 ZIP、漏解压 `_internal`、只拖出启动器”等误操作。个人数据始终位于 `%LOCALAPPDATA%`，因此 one-file 的临时展开不承担持久数据职责；需要迁移、U 盘模式和诊断时仍保留便携 ZIP。
+Python 官方将 Windows embeddable distribution 定位为其他应用的一部分；PyInstaller 则能把解释器和依赖一并打包，让没有安装 Python 的用户运行程序。v2.2 采用 PyInstaller one-file 作为普通用户的首要下载：GitHub Release 页面直接提供 `ResearchOS.exe` 和 `ResearchHub.exe`，减少“下载源码 ZIP、漏解压依赖、只拖出启动器”等误操作。持久数据始终位于 `%LOCALAPPDATA%`，因此 one-file 的临时展开不承担数据职责；需要迁移、U 盘模式和诊断时仍保留完整 ZIP。
 
 程序与数据采用不同生命周期：
 
 - 正式 EXE 默认读取 `%LOCALAPPDATA%\ResearchCultivationOS`；
+- 联机中心 EXE 默认读取 `%LOCALAPPDATA%\ResearchCultivationOSHub`；
 - U 盘模式通过 `portable.flag` 使用相邻 `user_data/`；
 - 源码/CMD 开发继续使用仓库内数据，兼容既有目录；
 - 旧版迁移使用 SQLite Backup API 复制数据库，再复制附件目录；
@@ -229,3 +244,9 @@ CommonMark 将 Markdown 定义为用于结构化文档的纯文本格式，并�
 - https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
 - https://docs.github.com/en/repositories/creating-and-managing-repositories/about-repositories
 - https://learn.microsoft.com/en-us/windows/apps/develop/data/store-and-retrieve-app-data
+- https://grants.nih.gov/podcast-node/2278
+- https://www.ninds.nih.gov/current-research/research-funded-ninds/translational-research/create-bio/create-bio-application-support-library/create-bio-examples-milestones
+- https://www.ukri.org/wp-content/uploads/2023/02/ESRC-020223-Funding-Opp-Centres-LogicModelGuidance.pdf
+- https://help.osf.io/article/353-welcome-to-projects
+- https://www.crossref.org/documentation/retrieve-metadata/rest-api/
+- https://developers.openalex.org/

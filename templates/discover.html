@@ -6,7 +6,7 @@
 </div>
 <form class="discover-search panel" method="get">
   <input name="q" value="{{ q }}" placeholder="例如：expanded graphite cement supercapacitor">
-  <button class="primary-button">搜索 OpenAlex</button>
+  <button class="primary-button">搜索 Crossref</button>
 </form>
 {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
 {% if results %}
@@ -14,7 +14,7 @@
   {% for item in results %}
   <article class="paper-result panel">
     <div><span class="eyebrow">{{ item.year }}{% if item.source %} · {{ item.source }}{% endif %}</span><h2>{{ item.title }}</h2><p>{{ item.authors }}</p></div>
-    <div class="paper-meta"><span>引用 {{ item.cited_by }}</span>{% if item.open_access %}<span>开放获取</span>{% endif %}{% if item.doi %}<span>{{ item.doi }}</span>{% endif %}</div>
+    <div class="paper-meta"><span>被引元数据 {{ item.cited_by }}</span>{% if item.open_access %}<span>含许可信息</span>{% endif %}{% if item.doi %}<span>{{ item.doi }}</span>{% endif %}</div>
     <a class="soft-button" href="{{ item.url }}" target="_blank" rel="noopener">打开来源</a>
   </article>
   {% endfor %}

@@ -50,39 +50,51 @@ jobs:
           python self_test.py
           python self_test.py --integration
 
-      - name: Build single-file executable
-        run: pyinstaller --noconfirm --clean packaging/ResearchOS.spec
+      - name: Build personal and hub executables
+        run: |
+          pyinstaller --noconfirm --clean packaging/ResearchOS.spec
+          pyinstaller --noconfirm --clean packaging/ResearchHub.spec
 
-      - name: Smoke-test packaged executable
+      - name: Smoke-test packaged executables
         shell: pwsh
         run: |
           $testData = Join-Path $env:RUNNER_TEMP "research-os-smoke"
           & ".\dist\ResearchOS.exe" --data-dir $testData --self-check
-          if ($LASTEXITCODE -ne 0) { throw "Packaged self-check failed." }
+          if ($LASTEXITCODE -ne 0) { throw "Packaged personal-node self-check failed." }
+          $hubTestData = Join-Path $env:RUNNER_TEMP "research-hub-smoke"
+          & ".\dist\ResearchHub.exe" --data-dir $hubTestData --self-check
+          if ($LASTEXITCODE -ne 0) { throw "Packaged hub self-check failed." }
 
-      - name: Assemble direct EXE and portable ZIP
+      - name: Assemble direct EXEs and complete ZIP
         shell: pwsh
         run: |
           $releaseName = "ResearchCultivationOS-v$env:APP_VERSION-Windows-x64"
-          $releaseExeName = "ResearchOS-v$env:APP_VERSION-Windows-x64.exe"
-          $releaseExe = Join-Path "release" $releaseExeName
+          $personalExeName = "ResearchOS-v$env:APP_VERSION-Windows-x64.exe"
+          $hubExeName = "ResearchHub-v$env:APP_VERSION-Windows-x64.exe"
+          $personalExe = Join-Path "release" $personalExeName
+          $hubExe = Join-Path "release" $hubExeName
           $releaseRoot = Join-Path "release" $releaseName
           New-Item -ItemType Directory -Path "release" -Force | Out-Null
           New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
-          Copy-Item "dist\ResearchOS.exe" $releaseExe -Force
+          Copy-Item "dist\ResearchOS.exe" $personalExe -Force
+          Copy-Item "dist\ResearchHub.exe" $hubExe -Force
           Copy-Item "dist\ResearchOS.exe" (Join-Path $releaseRoot "ResearchOS.exe") -Force
+          Copy-Item "dist\ResearchHub.exe" (Join-Path $releaseRoot "ResearchHub.exe") -Force
           Copy-Item "packaging\windows\*.cmd" $releaseRoot -Force
           Copy-Item "packaging\USER_README.txt" $releaseRoot -Force
           Copy-Item "VERSION" $releaseRoot -Force
           $zipPath = Join-Path "release" "$releaseName.zip"
           Compress-Archive -Path $releaseRoot -DestinationPath $zipPath -CompressionLevel Optimal
-          $exeHash = (Get-FileHash $releaseExe -Algorithm SHA256).Hash.ToLower()
+          $personalHash = (Get-FileHash $personalExe -Algorithm SHA256).Hash.ToLower()
+          $hubHash = (Get-FileHash $hubExe -Algorithm SHA256).Hash.ToLower()
           $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
           @(
-            "$exeHash  $releaseExeName"
+            "$personalHash  $personalExeName"
+            "$hubHash  $hubExeName"
             "$zipHash  $releaseName.zip"
           ) | Set-Content "release\SHA256SUMS.txt" -Encoding ascii
-          "RELEASE_EXE=$releaseExe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_PERSONAL_EXE=$personalExe" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_HUB_EXE=$hubExe" | Out-File -FilePath $env:GITHUB_ENV -Append
           "RELEASE_ZIP=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload workflow artifact
@@ -90,7 +102,8 @@ jobs:
         with:
           name: ResearchCultivationOS-v${{ env.APP_VERSION }}-Windows-x64
           path: |
-            ${{ env.RELEASE_EXE }}
+            ${{ env.RELEASE_PERSONAL_EXE }}
+            ${{ env.RELEASE_HUB_EXE }}
             ${{ env.RELEASE_ZIP }}
             release/SHA256SUMS.txt
           if-no-files-found: error
@@ -117,7 +130,8 @@ jobs:
             exit 0
           }
           gh release create $tag `
-            $env:RELEASE_EXE `
+            $env:RELEASE_PERSONAL_EXE `
+            $env:RELEASE_HUB_EXE `
             $env:RELEASE_ZIP `
             "release\SHA256SUMS.txt" `
             --repo $env:GITHUB_REPOSITORY `

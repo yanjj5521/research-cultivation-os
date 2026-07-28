@@ -15,6 +15,7 @@
     <div class="gate-actions">
       <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">{{ nav_labels.start }} <span>→</span></a>
       <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整{{ nav_labels.plans }}</a>
+      <a class="gate-text-link" href="{{ url_for('projects_page') }}">推进课题{% if home_project_count %} · {{ home_project_count }}{% endif %}</a>
     </div>
   </div>
 

@@ -1,6 +1,6 @@
-# 问道科研 · Research Cultivation OS v2.1.1
+# 问道科研 · Research Cultivation OS v2.2.0
 
-> Windows 普通用户：前往 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest)，下载单个 `ResearchOS-*-Windows-x64.exe` 后直接双击。无需解压、Python、pip 或管理员权限。
+> Windows 普通用户：从 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest) 下载 `ResearchOS-*-Windows-x64.exe`。只有负责团队联机中心的人才需要另下 `ResearchHub-*-Windows-x64.exe`。两者均可直接双击，不要求 Python、pip 或管理员权限。
 
 一个本地优先、交付驱动的个人科研操作系统。轻量同行会仍可兼容小团队，但 v2.0 默认关闭联机，只预留未来规模化后端接口。
 
@@ -17,6 +17,17 @@
 
 修仙外观可以自定义，经验规则和科研数据结构保持稳定；漏一天不会清空长期成长，奖励只来自可追溯的真实行动。
 
+## v2.2.0：课题推进与完整双 EXE 发行
+
+- 新增“课题推进”：输入科学问题、价值、目标成果、成功标准、当前基础、约束、检索词、工作区与可选日期；
+- 每个课题生成 5 个可修改的证据闸门，按 `Go / Revise / Stop` 和真实证据推进，不用主观工时冒充科研进度；
+- 使用无需注册的 Crossref 公共 REST API 联网查找相关论文，可将先例保存并标注为直接基线、可借方法、反例/冲突或相邻启发；
+- 保存推进记录、证据、卡点、把握度和唯一下一行动，并可从当前闸门生成一份可直接导入的三日计划；
+- 联网找论文从已经要求 API Key 的 OpenAlex 迁移到 Crossref，普通用户无需配置检索密钥；
+- Release 同时提供 `ResearchOS.exe` 个人节点与 `ResearchHub.exe` 联机中心；完整 ZIP 还提供个人、中心、同机双启动和两套便携模式；
+- 个人数据与中心数据分别保存在 `%LOCALAPPDATA%\ResearchCultivationOS` 和 `%LOCALAPPDATA%\ResearchCultivationOSHub`；
+- 私有开发仓库保留个人端、中心端、同时启动和全量测试入口。
+
 ## v2.1.1：近期计划修复与单文件 EXE
 
 - “导入并启用”成功后直接进入新计划 Day 1；
@@ -32,7 +43,7 @@
 首页恢复为清晰的山门入口，不再重复各功能页面中的任务、论文、奖励和数据卡片：
 
 - **山门视觉**：保留每日诗句、头像、境界和轻量山水动效；
-- **双检索**：同一输入框可搜索本地知识库，也可按需联网搜索 OpenAlex；首页加载不会自动联网；
+- **双检索**：同一输入框可搜索本地知识库，也可按需联网搜索 Crossref；首页加载不会自动联网；
 - **四个直达入口**：修炼、温故、闭关和藏经阁；
 - **底部工作台坞**：显示本人固定的最多 6 个工作区与联机状态，EG、LAMMPS、数据集、ML、MD、COMSOL 均可自由替换；
 - **底部连续性条**：只补充最近保存、可用工作区、数据位置与当前版本，不恢复高密度仪表盘；
@@ -68,7 +79,8 @@ ML 工作区强调数据版本与拆分、特征管线、运行参数、指标�
 - GitHub `Releases` 是普通用户唯一需要接触的公开下载入口；
 - `main` 只接收已经通过回归、打包自检和数据迁移测试的稳定版本；
 - 未完成开发不直接堆在 `main`，应保存在本机独立开发工作区或单独的私有仓库；
-- 发布流水线在 Windows runner 上构建 one-file EXE，直接上传 EXE、便携 ZIP 与 `SHA256SUMS.txt`；
+- 发布流水线在 Windows runner 上构建个人端与中心端两个 one-file EXE，直接上传双 EXE、完整 ZIP 与 `SHA256SUMS.txt`；
+- 每个正式版本同时在公开仓库与私有开发仓库建立 `release/vX.Y.Z` 快照分支，旧版分支不覆盖；
 - GitHub 的公开仓库分支都是公开的，不能用一个所谓“开发分支”隐藏源码。需要保密时必须使用另一个私有仓库。
 
 ## 管理员与联机稳定性
@@ -87,7 +99,7 @@ ML 工作区强调数据版本与拆分、特征管线、运行参数、指标�
 - 每条记录一份 CommonMark 友好的 Markdown；
 - 完整结构化 `knowledge.json`；
 - 原始附件；
-- 工作区、实验、模拟和复盘关键文本索引；
+- 课题推进、工作区、实验、模拟和复盘关键文本索引；
 - 不包含游戏资产、API 密钥、联机 Token 或程序。
 
 需要完整恢复时仍使用“完整备份”；需要带着全部程序迁移时使用“整套便携迁移包”。
@@ -112,6 +124,14 @@ AI 生成 3–7 天近期计划
 - 将提示词复制给任意大模型，粘贴模型返回的 Markdown 即可导入；
 - 提示词明确区分跨天里程碑与当天行动，且禁止模型输出经验值；
 - 新计划可以随时替换旧计划，不产生“欠了几十天”的补课负担。
+
+### 课题推进
+
+- 课题不是不可变长期主线；可以并行建立、暂停、完成或停止；
+- “课题定义完整度”只检查问题、目标、成功标准、当前基础与检索词是否齐全；
+- “课题进度”只按通过的证据闸门计算，空白闸门不能直接标记通过；
+- 相关论文只保存公开元数据与 DOI/来源链接，全文仍由用户自行下载和管理；
+- 从当前闸门生成的三日计划会进入现有近期计划导入链，不另造一套每日任务。
 
 ### 交付驱动复盘
 
@@ -144,12 +164,18 @@ AI 生成 3–7 天近期计划
 公开发行版下载后直接双击：
 
 ```text
-ResearchOS-v2.1.1-Windows-x64.exe
+ResearchOS-v2.2.0-Windows-x64.exe
 ```
 
 默认打开 `http://127.0.0.1:5000`。无需管理员权限，也不会调用系统 Python。
 
-需要 U 盘模式、旧版数据迁移或桌面快捷方式时，再下载同一 Release 中的便携 ZIP，完整解压后使用其中的辅助 CMD。
+负责小团队联机中心的人下载并双击：
+
+```text
+ResearchHub-v2.2.0-Windows-x64.exe
+```
+
+中心默认使用端口 `5050`，首次运行会显示局域网地址和一次性管理员凭据。需要 U 盘模式、旧版数据迁移、双端同机启动或桌面快捷方式时，再下载同一 Release 中的完整 ZIP。
 
 源码开发模式仍可双击 `启动科研系统.cmd`，它会在当前源码目录创建 `.venv`；该 CMD 只用于开发和诊断，不作为普通用户发布入口。
 
@@ -225,7 +251,7 @@ SQLite 使用 WAL 模式；自动备份通过 SQLite Backup API 创建一致性�
 
 已有小团队仍可显式选择“轻量同行会”兼容模式：
 
-双击 `启动联机中心.cmd`，默认地址为 `http://127.0.0.1:5050`。
+直接双击 `ResearchHub.exe` 或 ZIP 中的 `启动联机中心.cmd`，默认地址为 `http://127.0.0.1:5050`。
 
 中心负责：
 
@@ -243,16 +269,20 @@ SQLite 使用 WAL 模式；自动备份通过 SQLite Backup API 创建一致性�
 app.py                    本地科研节点
 db.py                     本地数据库与就地迁移
 features/daily.py         近期任务与交付
+features/projects.py      课题定义、证据闸门、先例与推进记录
 features/review.py        昨日复盘、独立秘境与突破雷劫
 features/alchemy.py       特殊任务、灵草与炼丹
 features/workspaces.py    个人工作区定义与入口
 services/ai_provider.py   Ollama / Responses 结构化调用
 services/review_engine.py 出题、评分与离线回退
 services/prompt_builder.py 动态计划提示词
+services/project_progress.py 课题状态、闸门与三日计划
+services/scholar_search.py 无密钥 Crossref 论文发现
 services/progression.py   固定经验规则、39阶境界与突破门槛
 services/sync_backend.py  可替换联机后端接口
 services/profile_media.py 头像验证、压缩与迁移
 hub_app.py                轻量联机中心
+run_hub.py                ResearchHub EXE 启动、自检与独立数据目录
 safe_update.py            安全升级与旧数据迁移
 ```
 

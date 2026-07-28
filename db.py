@@ -24,6 +24,7 @@ DEFAULT_NAV_LABELS = {
     "cultivation": "修炼记录",
     "review": "温故知新",
     "plans": "近期计划",
+    "projects": "课题推进",
     "retreat": "闭关计时",
     "trials": "秘境试炼",
     "alchemy": "炼丹炉",
@@ -237,6 +238,72 @@ def init_db() -> None:
                 file_size INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(simulation_id) REFERENCES simulations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS research_projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                research_question TEXT NOT NULL DEFAULT '',
+                rationale TEXT NOT NULL DEFAULT '',
+                target_outcome TEXT NOT NULL DEFAULT '',
+                success_criteria TEXT NOT NULL DEFAULT '',
+                current_state TEXT NOT NULL DEFAULT '',
+                constraints_text TEXT NOT NULL DEFAULT '',
+                search_query TEXT NOT NULL DEFAULT '',
+                workspace_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'active',
+                target_date TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS project_milestones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                stage_key TEXT NOT NULL DEFAULT 'custom',
+                title TEXT NOT NULL,
+                criterion TEXT NOT NULL DEFAULT '',
+                deliverable TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'planned',
+                due_date TEXT,
+                evidence TEXT NOT NULL DEFAULT '',
+                decision TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS project_cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'Crossref',
+                external_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors TEXT NOT NULL DEFAULT '',
+                publication_year INTEGER,
+                source TEXT NOT NULL DEFAULT '',
+                doi TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL DEFAULT '',
+                cited_by INTEGER NOT NULL DEFAULT 0,
+                relation TEXT NOT NULL DEFAULT 'unclassified',
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(project_id,provider,external_id),
+                FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS project_updates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                update_type TEXT NOT NULL DEFAULT 'checkin',
+                summary TEXT NOT NULL,
+                evidence TEXT NOT NULL DEFAULT '',
+                next_action TEXT NOT NULL DEFAULT '',
+                confidence INTEGER NOT NULL DEFAULT 50,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS research_tracks (
@@ -555,6 +622,10 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_experiments_date ON experiments(experiment_date DESC);
             CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status);
             CREATE INDEX IF NOT EXISTS idx_simulations_updated ON simulations(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_research_projects_status ON research_projects(status, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id, sort_order, id);
+            CREATE INDEX IF NOT EXISTS idx_project_cases_project ON project_cases(project_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_project_updates_project ON project_updates(project_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_research_tracks_order ON research_tracks(sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_workspaces_order ON workspaces(active, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_research_plan_track ON research_plan_items(track_id, sort_order, id);

@@ -93,7 +93,7 @@ if __name__ == "__main__":
         from version import APP_VERSION
 
         with TestClient(web_app) as client:
-            for path in ("/", "/workspaces", "/settings", "/api/stats"):
+            for path in ("/", "/projects", "/workspaces", "/settings", "/api/stats"):
                 response = client.get(path)
                 if response.status_code != 200:
                     raise SystemExit(
@@ -141,6 +141,76 @@ if __name__ == "__main__":
                     ).fetchall()
                 if len(restored) != 1 or int(restored[0]["id"]) != int(original["id"]):
                     raise SystemExit("Packaged self-check failed: archived plan activation failed.")
+            created = client.post(
+                "/projects/new",
+                data={
+                    "title": "打包自检课题",
+                    "research_question": "变量 A 是否在约束 C 下改变结果 B？",
+                    "rationale": "验证课题推进的真实表单链路。",
+                    "target_outcome": "形成可审查结论。",
+                    "success_criteria": "至少三次重复且效应达到预设阈值。",
+                    "current_state": "已有一组预实验。",
+                    "constraints_text": "样品有限。",
+                    "search_query": "",
+                },
+                follow_redirects=False,
+            )
+            if created.status_code != 303:
+                raise SystemExit("Packaged self-check failed: a research project could not be created.")
+            with connect() as conn:
+                project = conn.execute(
+                    "SELECT id FROM research_projects WHERE title='打包自检课题' ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                gates = (
+                    conn.execute(
+                        "SELECT id,title,criterion,deliverable,status FROM project_milestones "
+                        "WHERE project_id=? ORDER BY sort_order,id",
+                        (project["id"],),
+                    ).fetchall()
+                    if project
+                    else []
+                )
+            if not project or len(gates) != 5 or gates[0]["status"] != "active":
+                raise SystemExit("Packaged self-check failed: project evidence gates are incomplete.")
+            client.post(
+                f"/projects/{project['id']}/milestones/{gates[0]['id']}/save",
+                data={
+                    "title": gates[0]["title"],
+                    "criterion": gates[0]["criterion"],
+                    "deliverable": gates[0]["deliverable"],
+                    "status": "passed",
+                },
+            )
+            with connect() as conn:
+                rejected = conn.execute(
+                    "SELECT status FROM project_milestones WHERE id=?", (gates[0]["id"],)
+                ).fetchone()
+            if not rejected or rejected["status"] != "active":
+                raise SystemExit("Packaged self-check failed: an empty evidence gate was accepted.")
+            client.post(
+                f"/projects/{project['id']}/milestones/{gates[0]['id']}/save",
+                data={
+                    "title": gates[0]["title"],
+                    "criterion": gates[0]["criterion"],
+                    "deliverable": gates[0]["deliverable"],
+                    "status": "passed",
+                    "evidence": "问题卡已保存，对照与边界均已写明。",
+                    "decision": "Go：进入先例检索。",
+                },
+            )
+            with connect() as conn:
+                states = [
+                    row["status"]
+                    for row in conn.execute(
+                        "SELECT status FROM project_milestones WHERE project_id=? ORDER BY sort_order,id",
+                        (project["id"],),
+                    )
+                ]
+            if states[:2] != ["passed", "active"]:
+                raise SystemExit("Packaged self-check failed: the next evidence gate was not activated.")
+            project_plan = client.get(f"/projects/{project['id']}/plan")
+            if project_plan.status_code != 200 or "导入并立即进入 Day 1" not in project_plan.text:
+                raise SystemExit("Packaged self-check failed: the project plan bridge is incomplete.")
         print(f"Research Cultivation OS {APP_VERSION} self-check PASS")
         print(f"Data: {DATA_ROOT}")
         raise SystemExit(0)

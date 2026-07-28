@@ -424,6 +424,9 @@ def dashboard(request: Request):
         workspace_total = int(conn.execute(
             "SELECT COUNT(*) n FROM workspaces WHERE active=1"
         ).fetchone()["n"])
+        active_project_count = int(conn.execute(
+            "SELECT COUNT(*) n FROM research_projects WHERE status='active'"
+        ).fetchone()["n"])
         last_activity = conn.execute(
             "SELECT detail,created_at FROM activities ORDER BY id DESC LIMIT 1"
         ).fetchone()
@@ -447,6 +450,7 @@ def dashboard(request: Request):
             ),
             home_sync_active=sync_provider == "legacy_hub",
             home_workspace_total=workspace_total,
+            home_project_count=active_project_count,
             home_last_saved=(
                 str(last_activity["detail"])[:52]
                 if last_activity and str(last_activity["detail"]).strip()
@@ -1192,6 +1196,10 @@ def export_json(request: Request):
         simulations = [dict(row) for row in conn.execute("SELECT * FROM simulations ORDER BY id")]
         simulation_files = [dict(row) for row in conn.execute("SELECT * FROM simulation_files ORDER BY id")]
         workspaces = [dict(row) for row in conn.execute("SELECT * FROM workspaces ORDER BY sort_order,id")]
+        research_projects = [dict(row) for row in conn.execute("SELECT * FROM research_projects ORDER BY updated_at DESC,id")]
+        project_milestones = [dict(row) for row in conn.execute("SELECT * FROM project_milestones ORDER BY project_id,sort_order,id")]
+        project_cases = [dict(row) for row in conn.execute("SELECT * FROM project_cases ORDER BY project_id,created_at,id")]
+        project_updates = [dict(row) for row in conn.execute("SELECT * FROM project_updates ORDER BY project_id,created_at,id")]
         research_tracks = [dict(row) for row in conn.execute("SELECT * FROM research_tracks ORDER BY sort_order,id")]
         research_plan_items = [dict(row) for row in conn.execute("SELECT * FROM research_plan_items ORDER BY track_id,sort_order,id")]
         research_folders = [dict(row) for row in conn.execute("SELECT * FROM research_folders ORDER BY id")]
@@ -1214,6 +1222,10 @@ def export_json(request: Request):
         "entries": entries, "activities": activities, "quests": quests, "experiments": experiments,
         "simulations": simulations, "simulation_files": simulation_files,
         "workspaces": workspaces,
+        "research_projects": research_projects,
+        "project_milestones": project_milestones,
+        "project_cases": project_cases,
+        "project_updates": project_updates,
         "research_tracks": research_tracks, "research_plan_items": research_plan_items,
         "research_folders": research_folders, "research_folder_files": research_folder_files,
         "mission_deliveries": mission_deliveries, "mission_delivery_files": mission_delivery_files,
@@ -1307,15 +1319,41 @@ def knowledge_export():
             dict(row)
             for row in conn.execute("SELECT * FROM workspaces ORDER BY sort_order,id")
         ]
+        research_projects = [
+            dict(row)
+            for row in conn.execute("SELECT * FROM research_projects ORDER BY updated_at DESC,id")
+        ]
+        project_milestones = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_milestones ORDER BY project_id,sort_order,id"
+            )
+        ]
+        project_cases = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_cases ORDER BY project_id,created_at,id"
+            )
+        ]
+        project_updates = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_updates ORDER BY project_id,created_at,id"
+            )
+        ]
     exported_at = now_iso()
     manifest = {
-        "format": "research-cultivation-knowledge-v2",
+        "format": "research-cultivation-knowledge-v3",
         "exported_at": exported_at,
         "counts": {
             "entries": len(entries),
             "experiments": len(experiments),
             "simulations": len(simulations),
             "workspaces": len(workspaces),
+            "research_projects": len(research_projects),
+            "project_milestones": len(project_milestones),
+            "project_cases": len(project_cases),
+            "project_updates": len(project_updates),
             "review_sources": len(review_sources),
         },
     }
@@ -1328,7 +1366,7 @@ def knowledge_export():
 - `entries/`：每条知识记录一份 Markdown；
 - `attachments/`：知识条目的原始附件；
 - `knowledge.json`：完整结构化索引，便于以后用 Python、Excel 或其他软件处理；
-- `records/`：个人工作区、实验、模拟和复盘关键文本索引；
+- `records/`：课题推进、个人工作区、实验、模拟和复盘关键文本索引；
 - `manifest.json`：格式版本与数量校验。
 
 本包不包含灵石、游戏资产、API 密钥、联机 Token 或软件程序。需要完整恢复整个系统时，请在网站“设置与备份”中下载完整备份。
@@ -1372,6 +1410,22 @@ def knowledge_export():
         zf.writestr(
             "records/workspaces.json",
             json.dumps(workspaces, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/research_projects.json",
+            json.dumps(research_projects, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/project_milestones.json",
+            json.dumps(project_milestones, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/project_cases.json",
+            json.dumps(project_cases, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/project_updates.json",
+            json.dumps(project_updates, ensure_ascii=False, indent=2),
         )
         zf.writestr(
             "records/experiments.json",
@@ -2315,6 +2369,7 @@ from features.folders import register_folder_routes
 from features.foundation_ui import register_foundation_ui_routes
 from features.game_world import register_game_routes
 from features.online_sync import register_online_routes
+from features.projects import register_project_routes
 from features.review import register_review_routes
 from features.alchemy import register_alchemy_routes
 from features.workspaces import register_workspace_routes
@@ -2326,6 +2381,7 @@ register_folder_routes(app, templates, context)
 register_foundation_ui_routes(app, templates, context)
 register_game_routes(app, templates, context, flash, current_realm)
 register_online_routes(app, templates, context, flash)
+register_project_routes(app, templates, context, flash)
 register_review_routes(app, templates, context, flash, current_realm)
 register_alchemy_routes(app, templates, context, flash)
 register_workspace_routes(app, templates, context, flash, entry_dict)
