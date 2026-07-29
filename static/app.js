@@ -14,6 +14,30 @@
     }
   });
 
+  const livingScene = document.querySelector('[data-living-scene]');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (livingScene && !reducedMotion.matches) {
+    let animationFrame = 0;
+    const resetScene = () => {
+      livingScene.style.setProperty('--scene-x', '0');
+      livingScene.style.setProperty('--scene-y', '0');
+    };
+    livingScene.addEventListener('pointermove', event => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const rect = livingScene.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width - 0.5).toFixed(3);
+        const y = ((event.clientY - rect.top) / rect.height - 0.5).toFixed(3);
+        livingScene.style.setProperty('--scene-x', x);
+        livingScene.style.setProperty('--scene-y', y);
+      });
+    });
+    livingScene.addEventListener('pointerleave', resetScene);
+    document.addEventListener('visibilitychange', () => {
+      livingScene.classList.toggle('scene-paused', document.hidden);
+    });
+  }
+
   const input = document.getElementById('fileInput');
   const zone = document.getElementById('dropzone');
   const list = document.getElementById('fileList');

@@ -25,6 +25,7 @@ DEFAULT_NAV_LABELS = {
     "review": "温故知新",
     "plans": "近期计划",
     "projects": "课题推进",
+    "career": "生涯罗盘",
     "retreat": "闭关计时",
     "trials": "秘境试炼",
     "alchemy": "炼丹炉",
@@ -306,6 +307,19 @@ def init_db() -> None:
                 FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS career_moments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                moment_type TEXT NOT NULL DEFAULT 'decision',
+                title TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT '',
+                evidence TEXT NOT NULL DEFAULT '',
+                project_id INTEGER,
+                occurred_on TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE SET NULL
+            );
+
             CREATE TABLE IF NOT EXISTS research_tracks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
@@ -471,7 +485,7 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS player_profile (
                 id INTEGER PRIMARY KEY CHECK (id=1),
-                display_name TEXT NOT NULL DEFAULT '准研一修士',
+                display_name TEXT NOT NULL DEFAULT '修士',
                 title TEXT NOT NULL DEFAULT '水泥基能源材料探索者',
                 bio TEXT NOT NULL DEFAULT '',
                 skills TEXT NOT NULL DEFAULT '',
@@ -626,6 +640,8 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_project_cases_project ON project_cases(project_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_project_updates_project ON project_updates(project_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_career_moments_date ON career_moments(occurred_on DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_career_moments_project ON career_moments(project_id, occurred_on DESC);
             CREATE INDEX IF NOT EXISTS idx_research_tracks_order ON research_tracks(sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_workspaces_order ON workspaces(active, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_research_plan_track ON research_plan_items(track_id, sort_order, id);
@@ -718,7 +734,7 @@ def init_db() -> None:
         ).fetchone() is not None
         defaults = {
             "site_name": "问道科研",
-            "researcher_name": "准研一修士",
+            "researcher_name": "修士",
             "domains": json.dumps(
                 [
                     "电化学", "超级电容器", "水泥基能源材料", "膨胀石墨", "分子动力学",
@@ -744,6 +760,11 @@ def init_db() -> None:
             "ui_poem_pool": "[]",
             "avatar_file": "",
             "review_popup": "1",
+            "career_phase": "foundation",
+            "career_focus": "把当前学习转化为可复用、可验证的科研能力。",
+            "career_boundary": "不为尚未确定的长期主线提前承诺，只推进当前证据最需要的一步。",
+            "career_success_signal": "能独立解释、复现或用证据修正一个关键判断。",
+            "career_review_date": "",
             "realm_names": json.dumps(default_realm_labels(), ensure_ascii=False),
             "nav_labels": json.dumps(DEFAULT_NAV_LABELS, ensure_ascii=False),
         }
@@ -887,12 +908,19 @@ def init_db() -> None:
         conn.execute(
             "INSERT OR IGNORE INTO player_profile(id,display_name,title,bio,skills,capabilities,goals,avatar_symbol,updated_at) VALUES (1,?,?,?,?,?,?,?,?)",
             (
-                "准研一修士", "水泥基能源材料探索者",
-                "正在用近期计划、真实交付和持续复盘建立自己的科研系统。",
+                "修士", "水泥基能源材料探索者",
+                "正在用方向判断、近期行动、真实交付和持续复盘建立能够陪伴整个科研生涯的成长系统。",
                 "电化学基础\n水泥基材料\n膨胀石墨实验\nLAMMPS入门\nPython数据处理",
                 "能复现基础案例\n能建立实验台账\n能拆解论文图表\n能用GPT辅助学习与排错",
-                "让当前学习留下可复用、可验证、可持续升级的科研资产", "道", ts,
+                "让每一次学习、试错、决策和成果都沉淀为下一阶段可调用的科研能力", "道", ts,
             ),
+        )
+        conn.execute(
+            "UPDATE settings SET value='修士' WHERE key='researcher_name' AND trim(value)='准研一修士'"
+        )
+        conn.execute(
+            "UPDATE player_profile SET display_name='修士',updated_at=? WHERE id=1 AND trim(display_name)='准研一修士'",
+            (ts,),
         )
         if conn.execute("SELECT COUNT(*) n FROM asset_transactions").fetchone()["n"] == 0:
             conn.execute("INSERT INTO asset_transactions(asset_key,amount,reason,created_at) VALUES (?,?,?,?)", ("spirit_stone", 12, "正式版开宗礼包", ts))

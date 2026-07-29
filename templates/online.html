@@ -3,18 +3,18 @@
 {% block content %}
 <div class="page-head minimal-head">
   <div>
-    <span class="eyebrow">Scale-ready extension seam</span>
+    <span class="eyebrow">Local-first ResearchHub</span>
     <h1>{{ nav_labels.online }}</h1>
-    <p>当前默认关闭，只固定未来可替换的后端接口。论文、图片、数据集、笔记和交付文件不会因为预留接口而上传。</p>
+    <p>联机通道已经可用：个人端连接 ResearchHub 后同步身份、轻量成长状态和版本信息；论文、数据集、笔记及实验附件仍留在个人电脑。</p>
   </div>
   <span class="sync-provider-badge {% if sync_provider == 'disabled' %}disabled{% endif %}">{{ sync_capabilities.label }}</span>
 </div>
 
 <section class="sync-contract-hero panel">
   <div>
-    <span class="eyebrow">Interface only</span>
-    <h2>规模化接口已预留，云端服务尚未建设</h2>
-    <p>客户端已经通过统一适配器调用联机后端，事件带版本号、唯一编号、聚合标识与顺序号；未来可以换成多租户云端，而不改每日任务、知识库或工作区代码。</p>
+    <span class="eyebrow">Channel ready</span>
+    <h2>电脑、联机中心和 Android 客户端已经贯通</h2>
+    <p>ResearchOS 负责本地科研工作，ResearchHub 负责小团队联机和手机版入口。事件带唯一编号并支持断线重试；以后更换规模化后端时，不需要重写每日任务、课题推进或工作区。</p>
   </div>
   <div class="contract-status">
     <div><small>契约版本</small><strong>{{ contract_version }}</strong></div>
@@ -32,30 +32,38 @@
 
 <div class="content-grid equal">
   <form method="post" action="{{ url_for('online_settings_save') }}" class="panel clean-form">
-    <div class="panel-head simple"><div><span class="eyebrow">Backend adapter</span><h2>后端模式</h2></div></div>
+    <div class="panel-head simple"><div><span class="eyebrow">三步开启</span><h2>连接 ResearchHub</h2></div></div>
+    <ol class="connection-steps">
+      <li><b>1</b><span>在一台电脑双击 <code>ResearchHub.exe</code></span></li>
+      <li><b>2</b><span>登录中心，在“我的联机主页”复制 Token</span></li>
+      <li><b>3</b><span>填写中心地址与 Token，点击“保存并联机”</span></li>
+    </ol>
     <label>
       <span>当前模式</span>
       <select name="sync_provider">
         <option value="disabled" {% if sync_provider=='disabled' %}selected{% endif %}>关闭 · 只保留扩展接口</option>
-        <option value="legacy_hub" {% if sync_provider=='legacy_hub' %}selected{% endif %}>轻量同行会 · 兼容旧版小团队</option>
+        <option value="legacy_hub" {% if sync_provider=='legacy_hub' %}selected{% endif %}>ResearchHub · 十人以内联机</option>
         <option value="cloud_v2" disabled>规模化云端 v2 · 尚未实现</option>
       </select>
     </label>
     <label><span>轻量中心地址</span><input name="hub_url" value="{{ hub_url }}" placeholder="例如 http://192.168.1.20:5050"></label>
     <small class="form-help {% if not hub_url_ok %}text-danger{% endif %}">{{ hub_url_policy }}</small>
     <label><span>轻量中心 Token</span><input type="password" name="hub_api_token" autocomplete="new-password" placeholder="{% if hub_token_configured %}已安全保存；留空保持不变{% else %}从“我的联机主页”复制{% endif %}"></label>
-    <label class="check-label"><input type="checkbox" name="auto_sync" value="1" {% if auto_sync %}checked{% endif %}>仅在轻量同行会模式下自动同步</label>
-    <button class="primary-button">保存模式</button>
+    <label class="check-label"><input type="checkbox" name="auto_sync" value="1" {% if auto_sync or sync_provider == 'disabled' %}checked{% endif %}>连接成功后自动同步轻量状态</label>
+    <div class="button-row">
+      <button class="primary-button" name="connect_now" value="1">保存并联机</button>
+      <button class="soft-button" name="connect_now" value="0">只保存</button>
+    </div>
     <small class="form-help">选择“关闭”后不会新建同步队列；启用时，公网地址必须使用 HTTPS，HTTP 只允许本机或私有局域网。</small>
   </form>
 
   <section class="panel">
-    <div class="panel-head simple"><div><span class="eyebrow">Future boundary</span><h2>以后真正扩容时再建设</h2></div></div>
+    <div class="panel-head simple"><div><span class="eyebrow">使用边界</span><h2>现在能联什么，不能联什么</h2></div></div>
     <div class="future-boundary-list">
-      <div><span>1</span><p><strong>统一登录与租户</strong><small>标准 OAuth / OIDC，用户与团队数据严格隔离。</small></p></div>
-      <div><span>2</span><p><strong>服务端数据库</strong><small>PostgreSQL、行级安全、连接池、备份与审计。</small></p></div>
-      <div><span>3</span><p><strong>异步事件</strong><small>幂等批处理、游标增量、重试与死信处理。</small></p></div>
-      <div><span>4</span><p><strong>文件边界</strong><small>科研原文件默认仍本地；只有明确授权才使用对象存储。</small></p></div>
+      <div><span>1</span><p><strong>已经可用</strong><small>账号、公开主页、灵石、法器、个性化、资料卡与版本提醒。</small></p></div>
+      <div><span>2</span><p><strong>手机入口</strong><small>Android 客户端连接同一个 ResearchHub，随时查看同行会与个人联机主页。</small></p></div>
+      <div><span>3</span><p><strong>断网保护</strong><small>本地操作先完成；断网事件排队、退避重试，不阻塞科研工作。</small></p></div>
+      <div><span>4</span><p><strong>隐私边界</strong><small>论文、实验原始数据、笔记和附件不进入联机中心。</small></p></div>
     </div>
     <a class="soft-button" href="{{ url_for('sync_capabilities') }}">查看机器可读能力接口</a>
   </section>
@@ -96,7 +104,7 @@
 {% if sync_provider == 'legacy_hub' %}
 <section class="panel legacy-sync-panel">
   <div class="panel-head simple"><div><span class="eyebrow">Compatibility only</span><h2>轻量同行会操作</h2></div>{% if hub_url %}<a href="{{ hub_url }}" target="_blank" rel="noopener">打开同行会</a>{% endif %}</div>
-  <p>该适配器只服务十人以内的小团队；本地操作先完成，联机成功与否不会决定资料是否保存。</p>
+    <p>ResearchHub 服务十人以内的小团队；本地操作先完成，联机成功与否不会决定资料是否保存。</p>
   <div class="button-row">
     <form method="post" action="{{ url_for('online_connect') }}"><button class="primary-button">连接并合并状态</button></form>
     <form method="post" action="{{ url_for('online_sync_now') }}"><button class="soft-button">立即同步</button></form>

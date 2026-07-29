@@ -442,6 +442,33 @@ def health() -> dict[str, Any]:
         )
 
 
+@app.get("/.well-known/research-cultivation-os")
+def mobile_discovery() -> dict[str, Any]:
+    return {
+        "product": "Research Cultivation OS",
+        "role": "research_hub",
+        "version": VERSION,
+        "mobile_client": {
+            "supported": True,
+            "entry_path": "/",
+            "health_path": "/health",
+            "private_http_allowed": True,
+            "public_https_required": True,
+        },
+        "data_policy": {
+            "research_files": "local_only",
+            "hub_data": [
+                "account",
+                "public_profile",
+                "lightweight_progress",
+                "inventory",
+                "resource_cards",
+                "release_metadata",
+            ],
+        },
+    }
+
+
 @app.get("/", response_class=HTMLResponse, name="hub_home")
 def home(request: Request):
     user = current_user(request)

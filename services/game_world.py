@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 ARTIFACTS = {
-    "qingxin_slip": {"name": "清心玉简", "icon": "▤", "price": 28, "desc": "提醒自己只保留最重要的问题。"},
+    "qingxin_slip": {"name": "清心玉简", "icon": "▤", "price": 12, "desc": "开宗礼包即可换取，提醒自己只保留最重要的问题。"},
     "measuring_ruler": {"name": "量天尺", "icon": "⌇", "price": 45, "desc": "象征统一单位、尺度与比较口径。"},
     "returning_furnace": {"name": "归一炉", "icon": "◉", "price": 68, "desc": "把零散数据炼成可复用的方法。"},
     "star_compass": {"name": "观星罗盘", "icon": "✧", "price": 88, "desc": "帮助你在大量文献中不偏离主问题。"},

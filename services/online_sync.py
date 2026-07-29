@@ -302,7 +302,7 @@ def apply_state(conn, state: dict[str, Any]) -> None:
         conn.execute(
             """UPDATE player_profile SET display_name=?,title=?,bio=?,skills=?,capabilities=?,goals=?,avatar_symbol=?,updated_at=? WHERE id=1""",
             (
-                str(user.get("display_name", "准研一修士")), str(profile.get("title", "")),
+                str(user.get("display_name", "修士")), str(profile.get("title", "")),
                 str(profile.get("bio", "")), str(profile.get("skills", "")),
                 str(profile.get("capabilities", "")), str(profile.get("goals", "")),
                 str(profile.get("avatar_symbol", "道"))[:2] or "道", now_iso(),
@@ -310,7 +310,7 @@ def apply_state(conn, state: dict[str, Any]) -> None:
         )
         conn.execute(
             "INSERT INTO settings(key,value) VALUES ('researcher_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(user.get("display_name", "准研一修士")),),
+            (str(user.get("display_name", "修士")),),
         )
 
     theme = state.get("theme") if isinstance(state.get("theme"), dict) else {}

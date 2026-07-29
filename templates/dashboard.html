@@ -1,8 +1,23 @@
 {% extends "base.html" %}
 {% block title %}山门 · {{ site_name }}{% endblock %}
 {% block content %}
-<section class="mountain-gate">
-  <div class="gate-sun"></div>
+<section class="mountain-gate" data-living-scene>
+  <div class="gate-sky-glow" aria-hidden="true"></div>
+  <div class="gate-sun" aria-hidden="true"><i></i></div>
+  <div class="gate-birds bird-flight-a" aria-hidden="true">
+    <svg viewBox="0 0 210 64" focusable="false">
+      <path d="M4 30 Q16 18 28 30 Q40 18 52 30"/>
+      <path d="M70 18 Q82 7 94 18 Q106 7 118 18"/>
+      <path d="M126 42 Q138 31 150 42 Q162 31 174 42"/>
+    </svg>
+  </div>
+  <div class="gate-birds bird-flight-b" aria-hidden="true">
+    <svg viewBox="0 0 120 46" focusable="false">
+      <path d="M3 23 Q13 14 23 23 Q33 14 43 23"/>
+      <path d="M58 34 Q68 25 78 34 Q88 25 98 34"/>
+    </svg>
+  </div>
+  <div class="gate-embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="gate-mountain mountain-far"></div>
   <div class="gate-mountain mountain-near"></div>
   <div class="gate-mist mist-one"></div>
@@ -16,6 +31,7 @@
       <a class="primary-button gate-primary" href="{{ url_for('daily_page') }}">{{ nav_labels.start }} <span>→</span></a>
       <a class="gate-text-link" href="{{ url_for('plans_page') }}">调整{{ nav_labels.plans }}</a>
       <a class="gate-text-link" href="{{ url_for('projects_page') }}">推进课题{% if home_project_count %} · {{ home_project_count }}{% endif %}</a>
+      <a class="gate-text-link" href="{{ url_for('career_page') }}">{{ nav_labels.career }}</a>
     </div>
   </div>
 

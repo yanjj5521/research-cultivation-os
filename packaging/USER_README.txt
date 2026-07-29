@@ -25,6 +25,10 @@ ResearchHub.exe（轻量联机中心）
   保存成员账号、邀请码、公开主页、灵石/资材、公共资料卡、版本通知和
   同步事件。它不读取成员电脑上的论文、实验原始数据或交付文件。
 
+ResearchOS-Mobile-*-Android.apk（在 GitHub Release 单独下载）
+  连接已经运行的 ResearchHub，提供手机上的账号、同行、资料卡和轻量
+  状态入口。它不复制个人端数据库或科研原文件。
+
 普通模式数据目录：
   个人节点  %LOCALAPPDATA%\ResearchCultivationOS
   联机中心  %LOCALAPPDATA%\ResearchCultivationOSHub
@@ -38,7 +42,9 @@ ResearchHub.exe（轻量联机中心）
 3. 管理员打开窗口中显示的一次性凭据文件，登录中心后立即修改密码。
 4. 管理员在中心网页生成邀请码；成员用邀请码注册。
 5. 每位成员打开自己的 ResearchOS.exe，在“联机扩展”中填写中心地址和
-   自己的 API Token，然后检测连接。
+   自己的 API Token，然后点击“保存并联机”。
+6. Android 用户可填写窗口显示的地址，或在手机浏览器打开 Hub 后点击
+   页面底部“一键打开”链接。
 
 如果不启用联机，ResearchOS.exe 的全部本地功能仍可正常使用。
 
@@ -57,6 +63,7 @@ ResearchHub.exe（轻量联机中心）
 五、更新与安全
 
 - 正式 Release 同时提供个人端 EXE、中心端 EXE、完整 ZIP 和 SHA-256；
+- Android APK 与 Windows 产品位于同一 Release，并写入同一 SHA-256 文件；
 - 只做个人使用的人不需要下载或运行 ResearchHub；
 - 公网联机必须使用 HTTPS Tunnel 或 VPS，不能直接暴露 5050；
 - 不要把 research_os.db、hub.db、管理员凭据或 API Token 放进网盘共享；

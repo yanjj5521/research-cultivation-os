@@ -1,18 +1,29 @@
-# 问道科研 v2.2.0 联机说明
+# 问道科研 v2.3.0 联机说明
 
 ## 先看清边界
 
-v2.2.0 的个人节点默认选择“未启用”，不会建立同步队列，也不会上传或拉取任何状态。规模化云端 v2 仍只是接口、事件信封和 OpenAPI 草案，服务器、统一登录与多租户数据库尚未实现。
+v2.3.0 的个人节点默认选择“未启用”，不会建立同步队列，也不会上传或拉取任何状态。用户选择 ResearchHub 后可点击“保存并联机”，一次完成地址校验、首次轻量状态合并和自动同步开启。规模化云端 v2 仍只是接口、事件信封和 OpenAPI 草案，服务器、统一登录与多租户数据库尚未实现。
 
 下面的局域网、隧道和 VPS 方案只用于兼容现有“轻量同行会”，适合小范围自托管，不是成百上千用户的生产架构。要使用它，先在个人节点的“联机扩展”中主动选择“轻量同行会（兼容）”。
 
 ## 两个 EXE 分别给谁
 
-- 每位使用者下载并双击 `ResearchOS-v2.2.0-Windows-x64.exe`，用于本人的计划、课题、论文、工作区和附件；
-- 只有负责小团队联机服务的人才下载并双击 `ResearchHub-v2.2.0-Windows-x64.exe`；
+- 每位 Windows 使用者下载并双击 `ResearchOS-v2.3.0-Windows-x64.exe`，用于本人的计划、课题、生涯、论文、工作区和附件；
+- 只有负责小团队联机服务的人才下载并双击 `ResearchHub-v2.3.0-Windows-x64.exe`；
+- Android 使用者安装 `ResearchOS-Mobile-v2.3.0-Android.apk`，连接已经运行的 ResearchHub；
 - 同一台电脑可以同时运行两个程序：个人节点默认端口 `5000`，联机中心默认端口 `5050`；
 - 个人数据默认位于 `%LOCALAPPDATA%\ResearchCultivationOS`，中心数据默认位于 `%LOCALAPPDATA%\ResearchCultivationOSHub`，二者互不覆盖；
 - 不需要团队联机时，只下载 `ResearchOS`，无需运行 `ResearchHub`。
+
+## Android 连接
+
+1. 管理员在一台会保持开机的电脑运行 `ResearchHub.exe`；
+2. 窗口会显示 `Android client address` 和 `Android one-tap pairing link`；
+3. 手机与主机在同一私有网络时，可在 APK 中填写 `192.168.x.x:5050`；
+4. 也可先用手机浏览器打开 Hub，点击页面底部“在 Android App 中打开当前中心”；
+5. 公网中心必须使用有效的 `https://` 地址，不能把 5050 直接暴露在互联网上。
+
+APK 只提供 ResearchHub 的账号、公开主页、轻量进度、资产、资料卡和版本入口。它不复制个人电脑上的 `research_os.db`、论文、实验原始数据或交付附件；不启用 JavaScript 原生桥，也不申请相机、麦克风或存储权限。
 
 ## 管理员首次设置
 
@@ -56,7 +67,7 @@ v2.2.0 的个人节点默认选择“未启用”，不会建立同步队列，�
 
 ## 方案 A：局域网
 
-1. 主机直接双击 `ResearchHub-v2.2.0-Windows-x64.exe`；若下载了完整 ZIP，也可双击其中的 `启动联机中心.cmd`；
+1. 主机直接双击 `ResearchHub-v2.3.0-Windows-x64.exe`；若下载了完整 ZIP，也可双击其中的 `启动联机中心.cmd`；
 2. PowerShell 运行 `ipconfig`；
 3. 找到 IPv4，例如 `192.168.1.20`；
 4. 成员打开 `http://192.168.1.20:5050`；

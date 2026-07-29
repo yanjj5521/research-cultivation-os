@@ -99,6 +99,93 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     `python self_test.py --integration`.
     """
 
+    career_page = client.get("/career")
+    _check_response(failures, "career compass", career_page)
+    for marker in ("生涯罗盘", "现在最值得推进的一步", "科研生涯不是文件堆积", "值得带到下一阶段"):
+        if marker not in career_page.text:
+            failures.append(f"career compass missed: {marker}")
+    _check_response(
+        failures,
+        "career focus save",
+        client.post(
+            "/career/focus",
+            data={
+                "phase": "validate",
+                "focus": "建立可以区分电子通路与离子可达性的证据链。",
+                "boundary": "不把单批次相关性写成机制结论。",
+                "success_signal": "三批重复与两类独立证据给出同一判断。",
+                "review_date": (date.today() + timedelta(days=30)).isoformat(),
+            },
+        ),
+    )
+    _check_response(
+        failures,
+        "career moment create",
+        client.post(
+            "/career/moments/new",
+            data={
+                "moment_type": "failure",
+                "title": "把一次异常结果转为边界条件",
+                "summary": "压实过高后电容没有继续增加。",
+                "evidence": "原始曲线、样品照片和复测记录均已保存。",
+                "project_id": "0",
+                "occurred_on": date.today().isoformat(),
+            },
+        ),
+    )
+    with connect() as conn:
+        career_phase = conn.execute(
+            "SELECT value FROM settings WHERE key='career_phase'"
+        ).fetchone()
+        career_moment = conn.execute(
+            "SELECT * FROM career_moments WHERE title='把一次异常结果转为边界条件'"
+        ).fetchone()
+    if not career_phase or career_phase["value"] != "validate":
+        failures.append("career compass did not persist its current phase")
+    if not career_moment or career_moment["moment_type"] != "failure":
+        failures.append("career timeline did not persist a failure-to-learning moment")
+
+    world_before = client.get("/world")
+    _check_response(failures, "starter artifact storefront", world_before)
+    if "购入 · 12 灵石" not in world_before.text:
+        failures.append("starter gift could not visibly afford the starter artifact")
+    _check_response(
+        failures,
+        "starter artifact exact-balance purchase",
+        client.post("/world/artifacts/qingxin_slip/buy"),
+    )
+    with connect() as conn:
+        starter_artifact = conn.execute(
+            "SELECT * FROM inventory_items WHERE item_key='qingxin_slip'"
+        ).fetchone()
+        stone_after_purchase = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) n FROM asset_transactions WHERE asset_key='spirit_stone'"
+        ).fetchone()["n"]
+    if not starter_artifact or int(stone_after_purchase) != 0:
+        failures.append("exact-balance artifact purchase was not atomic")
+    _check_response(
+        failures,
+        "duplicate artifact purchase protection",
+        client.post("/world/artifacts/qingxin_slip/buy"),
+    )
+    _check_response(
+        failures,
+        "insufficient artifact purchase protection",
+        client.post("/world/artifacts/measuring_ruler/buy"),
+    )
+    with connect() as conn:
+        duplicate_count = conn.execute(
+            "SELECT COUNT(*) n FROM inventory_items WHERE item_key='qingxin_slip'"
+        ).fetchone()["n"]
+        unaffordable = conn.execute(
+            "SELECT 1 FROM inventory_items WHERE item_key='measuring_ruler'"
+        ).fetchone()
+        stone_after_rejections = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) n FROM asset_transactions WHERE asset_key='spirit_stone'"
+        ).fetchone()["n"]
+    if duplicate_count != 1 or unaffordable or int(stone_after_rejections) != 0:
+        failures.append("artifact repeat/insufficient guards changed inventory or balance")
+
     plan_text = """# 自检近期计划
 > 用真实交付驱动复盘
 ## 修炼任务
@@ -546,6 +633,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     for marker in (
         "mountain-gate", "今日一诗", "gate-dual-search", "搜知识库", "联网找论文",
         "gate-shortcuts", "home-workbench-dock", "home-continuity-strip",
+        "data-living-scene", "gate-sun", "gate-birds", "生涯罗盘",
         "LAMMPS", "数据集", "ML", "MD", "COMSOL", "本地优先 · 联机关闭",
     ):
         if marker not in dashboard.text:
@@ -911,6 +999,8 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             failures.append("knowledge export did not include original attachments")
         if "records/research_projects.json" not in names:
             failures.append("knowledge export did not include research projects")
+        if "records/career_moments.json" not in names:
+            failures.append("knowledge export did not include career milestones")
     except zipfile.BadZipFile:
         failures.append("portable knowledge export was not a valid ZIP")
 
@@ -964,7 +1054,7 @@ def main() -> None:
     client = TestClient(app.app)
     pages = [
         "/", "/cultivation", "/daily", "/review", "/trials", "/retreat", "/alchemy", "/world", "/profile", "/plans",
-        "/projects", "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
+        "/projects", "/career", "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
     ]
     failures = []
     _check_plan_copy_parser(failures)
@@ -1015,16 +1105,20 @@ def main() -> None:
     try:
         with zipfile.ZipFile(io.BytesIO(knowledge_export.content)) as archive:
             names = set(archive.namelist())
-        if not {
-            "README.md",
-            "manifest.json",
-            "knowledge.json",
-            "records/research_projects.json",
-            "records/project_milestones.json",
-            "records/project_cases.json",
-            "records/project_updates.json",
-        }.issubset(names):
-            failures.append("knowledge export missed its portable index files")
+            if not {
+                "README.md",
+                "manifest.json",
+                "knowledge.json",
+                "records/research_projects.json",
+                "records/project_milestones.json",
+                "records/project_cases.json",
+                "records/project_updates.json",
+                "records/career_moments.json",
+            }.issubset(names):
+                failures.append("knowledge export missed its portable index files")
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            if manifest.get("format") != "research-cultivation-knowledge-v4":
+                failures.append("knowledge export did not use the career-aware v4 format")
     except zipfile.BadZipFile:
         failures.append("knowledge export was not a valid ZIP")
     with connect() as conn:
@@ -1034,7 +1128,7 @@ def main() -> None:
             "review_sources", "review_sessions", "review_session_sources", "review_answers",
             "review_snoozes", "realm_tribulations", "special_tasks", "herb_inventory",
             "workspaces", "research_projects", "project_milestones", "project_cases",
-            "project_updates",
+            "project_updates", "career_moments",
         }
         found = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         missing = sorted(required_tables - found)
@@ -1077,6 +1171,14 @@ def main() -> None:
         ).fetchone()["n"]
         if pinned_defaults != 6:
             failures.append("six default workspaces were not pinned on first initialization")
+        old_identity = conn.execute(
+            "SELECT COUNT(*) n FROM settings WHERE key='researcher_name' AND trim(value)='准研一修士'"
+        ).fetchone()["n"]
+        old_profile_identity = conn.execute(
+            "SELECT COUNT(*) n FROM player_profile WHERE id=1 AND trim(display_name)='准研一修士'"
+        ).fetchone()["n"]
+        if old_identity or old_profile_identity:
+            failures.append("legacy default identity was not migrated from 准研一修士 to 修士")
     if get_setting("portable_version") != APP_VERSION:
         failures.append(f"portable version was not migrated to {APP_VERSION}")
     if len(REALM_STAGES) != 39:
@@ -1106,9 +1208,9 @@ def main() -> None:
         raise SystemExit(1)
     print("SELF TEST PASS")
     if integration:
-        print("Plans, deliveries, evidence-based review, challenge grading, alchemy and personalization are ready.")
+        print("Plans, career memory, artifact transactions, deliveries, review, alchemy and personalization are ready.")
     else:
-        print(f"Core pages, v{APP_VERSION} light mountain-gate dashboard, composable workspaces, sync guardrails, knowledge export and separated local data are ready.")
+        print(f"Core pages, v{APP_VERSION} living mountain gate, career compass, workspaces, sync guardrails and portable data are ready.")
 
 
 if __name__ == "__main__":

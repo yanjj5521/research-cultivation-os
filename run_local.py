@@ -8,6 +8,7 @@ import tempfile
 import threading
 import urllib.request
 import webbrowser
+from datetime import date
 from pathlib import Path
 
 import uvicorn
@@ -93,14 +94,77 @@ if __name__ == "__main__":
         from version import APP_VERSION
 
         with TestClient(web_app) as client:
-            for path in ("/", "/projects", "/workspaces", "/settings", "/api/stats"):
+            for path in (
+                "/",
+                "/projects",
+                "/career",
+                "/world",
+                "/workspaces",
+                "/settings",
+                "/online",
+                "/api/stats",
+            ):
                 response = client.get(path)
                 if response.status_code != 200:
                     raise SystemExit(
                         f"Packaged self-check failed: {path} returned HTTP {response.status_code}."
                     )
-            if "gate-dual-search" not in client.get("/").text:
+            homepage = client.get("/").text
+            if "gate-dual-search" not in homepage or "data-living-scene" not in homepage:
                 raise SystemExit("Packaged self-check failed: the homepage template is incomplete.")
+            world = client.get("/world")
+            if world.status_code != 200 or "购入 · 12 灵石" not in world.text:
+                raise SystemExit("Packaged self-check failed: the starter artifact is not affordable.")
+            client.post("/world/artifacts/qingxin_slip/buy")
+            client.post("/world/artifacts/qingxin_slip/buy")
+            client.post("/world/artifacts/measuring_ruler/buy")
+            with connect() as conn:
+                starter_artifact = conn.execute(
+                    "SELECT COUNT(*) n FROM inventory_items WHERE item_key='qingxin_slip'"
+                ).fetchone()["n"]
+                unavailable_artifact = conn.execute(
+                    "SELECT 1 FROM inventory_items WHERE item_key='measuring_ruler'"
+                ).fetchone()
+                stone_balance = conn.execute(
+                    "SELECT COALESCE(SUM(amount),0) n FROM asset_transactions "
+                    "WHERE asset_key='spirit_stone'"
+                ).fetchone()["n"]
+            if starter_artifact != 1 or unavailable_artifact or int(stone_balance) != 0:
+                raise SystemExit(
+                    "Packaged self-check failed: artifact purchase safeguards are incomplete."
+                )
+            career_focus = client.post(
+                "/career/focus",
+                data={
+                    "phase": "validate",
+                    "focus": "形成可以复核的证据链。",
+                    "boundary": "不把单次相关性当作机制。",
+                    "success_signal": "至少两类独立证据支持同一判断。",
+                    "review_date": "",
+                },
+            )
+            career_moment = client.post(
+                "/career/moments/new",
+                data={
+                    "moment_type": "decision",
+                    "title": "打包自检生涯节点",
+                    "summary": "验证长期科研记忆可写入。",
+                    "evidence": "打包后表单链路",
+                    "project_id": "0",
+                    "occurred_on": date.today().isoformat(),
+                },
+            )
+            if career_focus.status_code != 200 or career_moment.status_code != 200:
+                raise SystemExit("Packaged self-check failed: career compass forms are incomplete.")
+            with connect() as conn:
+                phase = conn.execute(
+                    "SELECT value FROM settings WHERE key='career_phase'"
+                ).fetchone()
+                moment = conn.execute(
+                    "SELECT 1 FROM career_moments WHERE title='打包自检生涯节点'"
+                ).fetchone()
+            if not phase or phase["value"] != "validate" or not moment:
+                raise SystemExit("Packaged self-check failed: career memory was not persisted.")
             plans_page = client.get("/plans")
             if "planImportForm" not in plans_page.text or "导入并立即进入 Day 1" not in plans_page.text:
                 raise SystemExit("Packaged self-check failed: plan import controls are incomplete.")

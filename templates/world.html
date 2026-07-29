@@ -47,7 +47,18 @@
       {% for item in artifacts %}
       <article class="artifact-card {% if item.equipped %}equipped{% endif %}">
         <span>{{ item.icon }}</span><div><strong>{{ item.name }}{% if item.owned %} · Lv.{{ item.level }}{% endif %}</strong><small>{{ item.desc }}</small></div>
-        {% if item.owned %}<div class="artifact-actions">{% if item.equipped %}<b>佩戴中</b>{% else %}<form method="post" action="{{ url_for('world_artifact_equip', artifact_key=item.key) }}"><button class="soft-button">佩戴</button></form>{% endif %}{% if item.level < 5 %}<form method="post" action="{{ url_for('world_artifact_upgrade', artifact_key=item.key) }}"><button class="soft-button">淬炼 {{ item.upgrade_cost }}灵石</button></form>{% endif %}</div>{% else %}<form method="post" action="{{ url_for('world_artifact_buy', artifact_key=item.key) }}"><button class="soft-button">{{ item.price }} 灵石</button></form>{% endif %}
+        {% if item.owned %}
+        <div class="artifact-actions">
+          {% if item.equipped %}<b>佩戴中</b>{% else %}<form method="post" action="{{ url_for('world_artifact_equip', artifact_key=item.key) }}"><button class="soft-button">佩戴</button></form>{% endif %}
+          {% if item.level < 5 %}<form method="post" action="{{ url_for('world_artifact_upgrade', artifact_key=item.key) }}"><button class="soft-button">淬炼 {{ item.upgrade_cost }}灵石</button></form>{% endif %}
+        </div>
+        {% else %}
+        <form method="post" action="{{ url_for('world_artifact_buy', artifact_key=item.key) }}" class="artifact-buy-form">
+          <button class="soft-button {% if item.can_afford %}ready{% endif %}" {% if not item.can_afford %}disabled title="还差 {{ item.shortfall }} 灵石"{% endif %}>
+            {% if item.can_afford %}购入 · {{ item.price }} 灵石{% else %}还差 {{ item.shortfall }} 灵石{% endif %}
+          </button>
+        </form>
+        {% endif %}
       </article>
       {% endfor %}
     </div>

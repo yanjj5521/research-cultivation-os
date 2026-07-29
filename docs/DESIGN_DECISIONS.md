@@ -1,6 +1,35 @@
-# v2.2.0 设计依据
+# v2.3.0 设计依据
 
-本文件记录截至 2026-07-28 采用的外部依据与后续使用反馈。v2.2 保留轻量山门与个性化工作区，同时增加证据驱动的课题推进，并把个人节点 EXE、轻量中心 EXE、源码开发和两类运行数据清晰分开。
+本文件记录截至 2026-07-29 采用的外部依据与后续使用反馈。v2.3 在证据驱动的课题推进之上增加科研生涯连续性、时间化山门、可核算法器交易、可直接开启的 ResearchHub 通道与 Android 客户端。
+
+## 从知识库到科研生涯成长系统
+
+OSF Projects 把项目作为可组织材料、人员与组件的研究空间；OSF Registrations 则把某一时点的研究状态固定成可追溯记录。NIH 里程碑框架强调可量化标准和 go/no-go 判断。这些都说明科研支持系统不能只问“保存了多少文件”，还需要保留“当时为什么这样判断、什么证据让阶段改变、哪些失败后来形成了能力”。
+
+因此 v2.3 增加生涯罗盘，但不预测一条不可变职业路线：
+
+- 当前阶段只描述眼前的能力或成果目标、主动边界和完成信号；
+- 关键决策、失败转化、技能、成果、合作和转向成为可关联课题的生涯节点；
+- 下一步优先从当前课题证据闸门与近期计划中选择；
+- 数量是证据索引，不作为科研质量评分；
+- 历史节点进入开放导出，避免被某个软件界面锁住。
+
+## 动态山门表达时间，不制造干扰
+
+落日、飞鸟和微光按本地时段变化，只影响装饰层；交互内容、检索和主要入口仍保持稳定。指针视差幅度有限，页面不可见时停止更新，`prefers-reduced-motion` 下关闭飞鸟、微光和持续动画。动态的意义是让同一套系统在多年使用中保留“回到研究现场”的时间感，而不是用动画抢占注意力。
+
+## Android 只进入 ResearchHub
+
+Android 官方建议把 WebView 导航限制在可信来源，避免不必要的 JavaScript 原生桥，并对明文流量做严格约束。因此 APK：
+
+- 只允许 `http` / `https`，公网主机强制 HTTPS；
+- HTTP 只允许 loopback、`.local` 和私有局域网；
+- WebView 禁用 JavaScript、文件系统访问、第三方 Cookie 和混合内容；
+- 同源页面留在 App，外部链接交给系统浏览器；
+- 不申请相机、麦克风或广泛存储权限；
+- 个人科研数据库与原始文件仍由桌面 ResearchOS 保存。
+
+GitHub Actions 分别在真实 Windows 与 Android 工具链中构建，最终发布任务只在双 EXE 自检、Android 单元测试、Lint、APK 签名检查和产品集合校验都通过后创建不可变 Release。
 
 ## 课题推进使用证据闸门
 
@@ -248,5 +277,11 @@ CommonMark 将 Markdown 定义为用于结构化文档的纯文本格式，并�
 - https://www.ninds.nih.gov/current-research/research-funded-ninds/translational-research/create-bio/create-bio-application-support-library/create-bio-examples-milestones
 - https://www.ukri.org/wp-content/uploads/2023/02/ESRC-020223-Funding-Opp-Centres-LogicModelGuidance.pdf
 - https://help.osf.io/article/353-welcome-to-projects
+- https://help.osf.io/article/330-welcome-to-registrations
 - https://www.crossref.org/documentation/retrieve-metadata/rest-api/
 - https://developers.openalex.org/
+- https://developer.android.com/develop/ui/views/layout/webapps/webview
+- https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges
+- https://developer.android.com/privacy-and-security/security-config
+- https://developer.android.com/build/building-cmdline
+- https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/storing-and-sharing-data-from-a-workflow

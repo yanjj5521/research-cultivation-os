@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.gradle/
 
 # Local runtime data
 instance/*
@@ -56,6 +57,11 @@ user_config/
 build/
 dist/
 release/
+*.apk
+*.aab
+*.jks
+*.keystore
+local.properties
 
 # OS / editor
 .DS_Store

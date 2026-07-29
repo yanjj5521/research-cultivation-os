@@ -333,6 +333,17 @@ def sanitize_rich_content(value: str) -> str:
     return bleach.clean(value or "", tags=RICH_TAGS, attributes=RICH_ATTRS, protocols=["http","https"], strip=True)
 
 
+def current_day_phase(moment: datetime | None = None) -> str:
+    hour = (moment or datetime.now()).hour
+    if 5 <= hour < 8:
+        return "dawn"
+    if 8 <= hour < 16:
+        return "day"
+    if 16 <= hour < 20:
+        return "sunset"
+    return "night"
+
+
 def flash(request: Request, message: str, category: str = "success") -> None:
     request.session.setdefault("flashes", []).append({"category": category, "message": message})
 
@@ -353,7 +364,7 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
     base = {
         "request": request,
         "site_name": get_setting("site_name", "问道科研"),
-        "researcher_name": get_setting("researcher_name", "准研一修士"),
+        "researcher_name": get_setting("researcher_name", "修士"),
         "nav_xp": xp,
         "nav_realm": current_realm(xp),
         "nav_assets": _balances,
@@ -367,6 +378,7 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "ui_scene": get_setting("ui_scene", "warm"),
         "ui_home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
         "ui_home_poem": daily_poem(),
+        "day_phase": current_day_phase(),
         "nav_labels": navigation_labels(),
         "nav_workspaces": _workspaces,
         "nav_avatar_symbol": (_profile["avatar_symbol"] if _profile else "道") or "道",
@@ -1111,7 +1123,7 @@ def settings_get(request: Request):
             request,
             "settings",
             current_site_name=get_setting("site_name", "问道科研"),
-            current_researcher_name=get_setting("researcher_name", "准研一修士"),
+            current_researcher_name=get_setting("researcher_name", "修士"),
             domain_text="\n".join(domains()),
             ai_mode=get_setting("ai_mode", "offline"),
             ai_endpoint=get_setting("ai_endpoint", "http://127.0.0.1:11434/api/generate"),
@@ -1132,7 +1144,7 @@ def settings_get(request: Request):
 def settings_post(
     request: Request,
     site_name: str = Form("问道科研"),
-    researcher_name: str = Form("准研一修士"),
+    researcher_name: str = Form("修士"),
     domains_text: str = Form("", alias="domains"),
     ai_mode: str = Form("offline"),
     ai_endpoint: str = Form("http://127.0.0.1:11434/api/generate"),
@@ -1147,7 +1159,7 @@ def settings_post(
     if "未分类" not in domain_list:
         domain_list.append("未分类")
     set_setting("site_name", site_name.strip() or "问道科研")
-    set_setting("researcher_name", researcher_name.strip() or "准研一修士")
+    set_setting("researcher_name", researcher_name.strip() or "修士")
     set_setting("domains", json.dumps(list(dict.fromkeys(domain_list)), ensure_ascii=False))
     set_setting("ai_mode", ai_mode if ai_mode in {"offline", "ollama", "openai"} else "offline")
     set_setting("ai_endpoint", ai_endpoint.strip() or "http://127.0.0.1:11434/api/generate")
@@ -1200,6 +1212,7 @@ def export_json(request: Request):
         project_milestones = [dict(row) for row in conn.execute("SELECT * FROM project_milestones ORDER BY project_id,sort_order,id")]
         project_cases = [dict(row) for row in conn.execute("SELECT * FROM project_cases ORDER BY project_id,created_at,id")]
         project_updates = [dict(row) for row in conn.execute("SELECT * FROM project_updates ORDER BY project_id,created_at,id")]
+        career_moments = [dict(row) for row in conn.execute("SELECT * FROM career_moments ORDER BY occurred_on,id")]
         research_tracks = [dict(row) for row in conn.execute("SELECT * FROM research_tracks ORDER BY sort_order,id")]
         research_plan_items = [dict(row) for row in conn.execute("SELECT * FROM research_plan_items ORDER BY track_id,sort_order,id")]
         research_folders = [dict(row) for row in conn.execute("SELECT * FROM research_folders ORDER BY id")]
@@ -1216,7 +1229,18 @@ def export_json(request: Request):
         realm_tribulations = [dict(row) for row in conn.execute("SELECT * FROM realm_tribulations ORDER BY id")]
         special_tasks = [dict(row) for row in conn.execute("SELECT * FROM special_tasks ORDER BY id")]
         herb_inventory = [dict(row) for row in conn.execute("SELECT * FROM herb_inventory ORDER BY grade")]
-        settings_rows = [dict(row) for row in conn.execute("SELECT key,value FROM settings WHERE key NOT IN ('hub_api_token') ORDER BY key")]
+        settings_rows = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT key,value FROM settings
+                WHERE key NOT IN (
+                    'hub_api_token','hub_initial_claim_uuid','hub_initial_claim_scope'
+                )
+                ORDER BY key
+                """
+            )
+        ]
     path = BACKUP_DIR / f"research_os_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     payload = {
         "entries": entries, "activities": activities, "quests": quests, "experiments": experiments,
@@ -1226,6 +1250,7 @@ def export_json(request: Request):
         "project_milestones": project_milestones,
         "project_cases": project_cases,
         "project_updates": project_updates,
+        "career_moments": career_moments,
         "research_tracks": research_tracks, "research_plan_items": research_plan_items,
         "research_folders": research_folders, "research_folder_files": research_folder_files,
         "mission_deliveries": mission_deliveries, "mission_delivery_files": mission_delivery_files,
@@ -1341,9 +1366,15 @@ def knowledge_export():
                 "SELECT * FROM project_updates ORDER BY project_id,created_at,id"
             )
         ]
+        career_moments = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM career_moments ORDER BY occurred_on DESC,id DESC"
+            )
+        ]
     exported_at = now_iso()
     manifest = {
-        "format": "research-cultivation-knowledge-v3",
+        "format": "research-cultivation-knowledge-v4",
         "exported_at": exported_at,
         "counts": {
             "entries": len(entries),
@@ -1354,6 +1385,7 @@ def knowledge_export():
             "project_milestones": len(project_milestones),
             "project_cases": len(project_cases),
             "project_updates": len(project_updates),
+            "career_moments": len(career_moments),
             "review_sources": len(review_sources),
         },
     }
@@ -1366,7 +1398,7 @@ def knowledge_export():
 - `entries/`：每条知识记录一份 Markdown；
 - `attachments/`：知识条目的原始附件；
 - `knowledge.json`：完整结构化索引，便于以后用 Python、Excel 或其他软件处理；
-- `records/`：课题推进、个人工作区、实验、模拟和复盘关键文本索引；
+- `records/`：课题推进、生涯节点、个人工作区、实验、模拟和复盘关键文本索引；
 - `manifest.json`：格式版本与数量校验。
 
 本包不包含灵石、游戏资产、API 密钥、联机 Token 或软件程序。需要完整恢复整个系统时，请在网站“设置与备份”中下载完整备份。
@@ -1426,6 +1458,10 @@ def knowledge_export():
         zf.writestr(
             "records/project_updates.json",
             json.dumps(project_updates, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/career_moments.json",
+            json.dumps(career_moments, ensure_ascii=False, indent=2),
         )
         zf.writestr(
             "records/experiments.json",
@@ -2364,6 +2400,7 @@ init_db()
 # Feature modules keep the high-frequency experience isolated from the legacy archive modules.
 from features.daily import register_daily_routes
 from features.assistant_hub import register_assistant_routes
+from features.career import register_career_routes
 from features.discover import register_discover_routes
 from features.folders import register_folder_routes
 from features.foundation_ui import register_foundation_ui_routes
@@ -2376,6 +2413,7 @@ from features.workspaces import register_workspace_routes
 
 register_daily_routes(app, templates, context, flash)
 register_assistant_routes(app, templates, context)
+register_career_routes(app, templates, context, flash)
 register_discover_routes(app, templates, context)
 register_folder_routes(app, templates, context)
 register_foundation_ui_routes(app, templates, context)

@@ -7,7 +7,7 @@
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
-<body class="theme-{{ ui_accent }} density-{{ ui_density }} scene-{{ ui_scene }} {% if active_page == 'dashboard' %}landing-mode{% endif %}">
+<body class="theme-{{ ui_accent }} density-{{ ui_density }} scene-{{ ui_scene }} day-phase-{{ day_phase }} {% if active_page == 'dashboard' %}landing-mode{% endif %}">
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}">
       <span class="brand-mark">道</span>
@@ -53,6 +53,7 @@
 
       <div class="nav-group">
         <span class="nav-label">{{ nav_labels.group_growth }}</span>
+        <a class="nav-item {% if active_page == 'career' %}active{% endif %}" href="{{ url_for('career_page') }}"><b>程</b><span>{{ nav_labels.career }}</span></a>
         <a class="nav-item {% if active_page == 'trials' %}active{% endif %}" href="{{ url_for('trials_page') }}"><b>境</b><span>{{ nav_labels.trials }}</span>{% if nav_realm.tribulation_required %}<i class="tribulation-dot" title="已到突破关口">雷</i>{% endif %}</a>
         <a class="nav-item {% if active_page == 'alchemy' %}active{% endif %}" href="{{ url_for('alchemy_page') }}"><b>丹</b><span>{{ nav_labels.alchemy }}</span></a>
         <a class="nav-item {% if active_page == 'world' %}active{% endif %}" href="{{ url_for('world_page') }}"><b>府</b><span>{{ nav_labels.world }}</span></a>

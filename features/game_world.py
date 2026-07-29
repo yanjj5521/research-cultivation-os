@@ -39,7 +39,17 @@ def register_game_routes(
             for key, spec in ARTIFACTS.items():
                 owned = inventory.get(key)
                 level = int(owned["level"]) if owned else 0
-                artifact_cards.append({"key": key, **spec, "owned": bool(owned), "equipped": bool(owned and owned["equipped"]), "level": level, "upgrade_cost": max(10, (int(spec["price"]) // 2) * max(level, 1))})
+                price = int(spec["price"])
+                artifact_cards.append({
+                    "key": key,
+                    **spec,
+                    "owned": bool(owned),
+                    "equipped": bool(owned and owned["equipped"]),
+                    "level": level,
+                    "upgrade_cost": max(10, (price // 2) * max(level, 1)),
+                    "can_afford": int(wallet["spirit_stone"]) >= price,
+                    "shortfall": max(0, price - int(wallet["spirit_stone"])),
+                })
             herb_specs = {
                 1: {"label": "凡品", "name": "青露草", "icon": "♧"},
                 2: {"label": "灵品", "name": "凝神花", "icon": "☘"},
@@ -103,13 +113,19 @@ def register_game_routes(
             raise HTTPException(status_code=404)
         spec = ARTIFACTS[artifact_key]
         with connect() as conn:
-            if conn.execute("SELECT 1 FROM inventory_items WHERE item_key=?", (artifact_key,)).fetchone():
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute(
+                "SELECT 1 FROM inventory_items WHERE item_key=? AND item_type='artifact'",
+                (artifact_key,),
+            ).fetchone():
                 flash(request, "你已经拥有这件法器。", "error")
                 return RedirectResponse(request.url_for("world_page"), status_code=303)
             try:
                 transact(conn, "spirit_stone", -int(spec["price"]), f"购入法器：{spec['name']}")
             except ValueError:
-                flash(request, f"灵石不足，需要 {spec['price']} 灵石。", "error")
+                current = balance(conn, "spirit_stone")
+                shortfall = max(0, int(spec["price"]) - current)
+                flash(request, f"当前有 {current} 灵石，还差 {shortfall} 灵石才能购入。", "error")
                 return RedirectResponse(request.url_for("world_page"), status_code=303)
             ts = now_iso()
             conn.execute(
@@ -217,14 +233,14 @@ def register_game_routes(
         with connect() as conn:
             conn.execute(
                 """UPDATE player_profile SET display_name=?,title=?,bio=?,skills=?,capabilities=?,goals=?,avatar_symbol=?,updated_at=? WHERE id=1""",
-                (display_name.strip() or "准研一修士", title.strip(), bio.strip(), skills.strip(), capabilities.strip(), goals.strip(), (avatar_symbol.strip() or "道")[:2], now_iso()),
+                (display_name.strip() or "修士", title.strip(), bio.strip(), skills.strip(), capabilities.strip(), goals.strip(), (avatar_symbol.strip() or "道")[:2], now_iso()),
             )
-            conn.execute("INSERT INTO settings(key,value) VALUES ('researcher_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (display_name.strip() or "准研一修士",))
+            conn.execute("INSERT INTO settings(key,value) VALUES ('researcher_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (display_name.strip() or "修士",))
             queue_event(
                 conn,
                 "profile_updated",
                 {
-                    "display_name": display_name.strip() or "准研一修士",
+                    "display_name": display_name.strip() or "修士",
                     "title": title.strip(), "bio": bio.strip(), "skills": skills.strip(),
                     "capabilities": capabilities.strip(), "goals": goals.strip(),
                     "avatar_symbol": (avatar_symbol.strip() or "道")[:2],

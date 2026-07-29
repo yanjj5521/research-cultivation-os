@@ -1,8 +1,8 @@
-# 问道科研 · Research Cultivation OS v2.2.0
+# 问道科研 · Research Cultivation OS v2.3.0
 
-> Windows 普通用户：从 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest) 下载 `ResearchOS-*-Windows-x64.exe`。只有负责团队联机中心的人才需要另下 `ResearchHub-*-Windows-x64.exe`。两者均可直接双击，不要求 Python、pip 或管理员权限。
+> Windows 普通用户：从 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest) 下载 `ResearchOS-*-Windows-x64.exe`。负责团队联机中心的人另下 `ResearchHub-*-Windows-x64.exe`；Android 用户下载同一 Release 中的 `ResearchOS-Mobile-*-Android.apk`。Windows 两个 EXE 均可直接双击，不要求 Python、pip 或管理员权限。
 
-一个本地优先、交付驱动的个人科研操作系统。轻量同行会仍可兼容小团队，但 v2.0 默认关闭联机，只预留未来规模化后端接口。
+一个本地优先、交付驱动、面向整个科研生涯的个人成长系统。知识库只是它的长期记忆层；真正的核心是让方向判断、近期行动、证据、失败、能力、成果和阶段转向彼此继承。ResearchHub 可按需连接小团队，未开启时个人端仍完整可用。
 
 它不是另一个待整理的资料仓库，也不是靠连续签到制造焦虑的打卡器。它把检索、计划、交付、复盘和长期科研资产连接为一条可重复流程：
 
@@ -12,10 +12,22 @@
 → 进入今日修炼
 → 留下真实交付
 → 次日从记忆中提取
-→ 论文、笔记、数据和能力证据长期积累
+→ 把失败、决策、能力和成果写入生涯罗盘
+→ 下一阶段继续调用过去积累的证据
 ```
 
 修仙外观可以自定义，经验规则和科研数据结构保持稳定；漏一天不会清空长期成长，奖励只来自可追溯的真实行动。
+
+## v2.3.0：科研生涯罗盘、可购买法器、动态山门与 Android
+
+- 默认身份从“准研一修士”迁移为更长期的“修士”；只改旧默认值，用户自己设置的姓名不动；
+- 新增“生涯罗盘”：记录当前阶段、阶段目标、明确边界、完成信号，以及关键决策、失败转化、技能、成果、合作与方向转折；
+- 系统会从活跃课题证据闸门、近期计划和已有交付中给出唯一“现在最值得推进的一步”，但不替用户承诺不可变主线；
+- 生涯节点进入完整 JSON、开放知识库 ZIP 和旧库升级保护；
+- 修复新用户 12 灵石却买不起最低法器的规则冲突：开宗礼包可刚好购入清心玉简，页面明确显示价格、缺口和拥有状态；
+- 首页按本地时段呈现晨曦、日间、落日或月夜，飞鸟、余晖、微光和山雾具有轻量视差，并完整尊重“减少动态效果”偏好；
+- 联机设置提供“保存并联机”，真实完成地址校验、首次状态合并和自动同步；ResearchHub 页面与启动窗口提供 Android 一键配对入口；
+- Release 新增可直接侧载的 Android APK，并与 Windows 个人端 EXE、中心端 EXE、完整 ZIP 和统一 SHA-256 一起构建与发布。
 
 ## v2.2.0：课题推进与完整双 EXE 发行
 
@@ -79,7 +91,7 @@ ML 工作区强调数据版本与拆分、特征管线、运行参数、指标�
 - GitHub `Releases` 是普通用户唯一需要接触的公开下载入口；
 - `main` 只接收已经通过回归、打包自检和数据迁移测试的稳定版本；
 - 未完成开发不直接堆在 `main`，应保存在本机独立开发工作区或单独的私有仓库；
-- 发布流水线在 Windows runner 上构建个人端与中心端两个 one-file EXE，直接上传双 EXE、完整 ZIP 与 `SHA256SUMS.txt`；
+- 发布流水线在 Windows runner 上构建个人端与中心端两个 one-file EXE，在 Android runner 上测试、Lint 并构建 APK，最后统一上传双 EXE、APK、完整 ZIP 与 `SHA256SUMS.txt`；
 - 每个正式版本同时在公开仓库与私有开发仓库建立 `release/vX.Y.Z` 快照分支，旧版分支不覆盖；
 - GitHub 的公开仓库分支都是公开的，不能用一个所谓“开发分支”隐藏源码。需要保密时必须使用另一个私有仓库。
 
@@ -99,7 +111,7 @@ ML 工作区强调数据版本与拆分、特征管线、运行参数、指标�
 - 每条记录一份 CommonMark 友好的 Markdown；
 - 完整结构化 `knowledge.json`；
 - 原始附件；
-- 课题推进、工作区、实验、模拟和复盘关键文本索引；
+- 课题推进、生涯节点、工作区、实验、模拟和复盘关键文本索引；
 - 不包含游戏资产、API 密钥、联机 Token 或程序。
 
 需要完整恢复时仍使用“完整备份”；需要带着全部程序迁移时使用“整套便携迁移包”。
@@ -164,7 +176,7 @@ AI 生成 3–7 天近期计划
 公开发行版下载后直接双击：
 
 ```text
-ResearchOS-v2.2.0-Windows-x64.exe
+ResearchOS-v2.3.0-Windows-x64.exe
 ```
 
 默认打开 `http://127.0.0.1:5000`。无需管理员权限，也不会调用系统 Python。
@@ -172,10 +184,20 @@ ResearchOS-v2.2.0-Windows-x64.exe
 负责小团队联机中心的人下载并双击：
 
 ```text
-ResearchHub-v2.2.0-Windows-x64.exe
+ResearchHub-v2.3.0-Windows-x64.exe
 ```
 
 中心默认使用端口 `5050`，首次运行会显示局域网地址和一次性管理员凭据。需要 U 盘模式、旧版数据迁移、双端同机启动或桌面快捷方式时，再下载同一 Release 中的完整 ZIP。
+
+### Android
+
+下载并安装：
+
+```text
+ResearchOS-Mobile-v2.3.0-Android.apk
+```
+
+APK 是 ResearchHub 的移动入口：先在一台电脑运行 `ResearchHub.exe`，再在手机输入窗口显示的局域网地址，或点击 Hub 页面底部的“一键打开”链接。局域网 HTTP 只允许私有地址；公网地址必须使用 HTTPS。手机端不复制个人 SQLite、论文、实验原始数据或附件。
 
 源码开发模式仍可双击 `启动科研系统.cmd`，它会在当前源码目录创建 `.venv`；该 CMD 只用于开发和诊断，不作为普通用户发布入口。
 
@@ -193,6 +215,7 @@ python run_local.py
 ```bash
 python self_test.py
 python hub_self_test.py
+python online_integration_test.py
 ```
 
 ## AI 模式
@@ -240,6 +263,7 @@ python run_local.py
 | 模拟案例 | 发行版：`%LOCALAPPDATA%\ResearchCultivationOS\storage\simulations\` | 否 |
 | 身份、主题、境界名、导航名、工作区定义 | SQLite / 个性化包 | 可选 |
 | 灵石、法器、建筑等轻量状态 | SQLite | 可选 |
+| Android 客户端 | 只保存所选 Hub 地址、登录 Cookie | 连接 ResearchHub |
 
 SQLite 使用 WAL 模式；自动备份通过 SQLite Backup API 创建一致性快照。仍建议定期把完整备份复制到另一块磁盘或可信云盘。
 
@@ -270,6 +294,7 @@ app.py                    本地科研节点
 db.py                     本地数据库与就地迁移
 features/daily.py         近期任务与交付
 features/projects.py      课题定义、证据闸门、先例与推进记录
+features/career.py        阶段罗盘与科研生涯节点
 features/review.py        昨日复盘、独立秘境与突破雷劫
 features/alchemy.py       特殊任务、灵草与炼丹
 features/workspaces.py    个人工作区定义与入口
@@ -277,12 +302,15 @@ services/ai_provider.py   Ollama / Responses 结构化调用
 services/review_engine.py 出题、评分与离线回退
 services/prompt_builder.py 动态计划提示词
 services/project_progress.py 课题状态、闸门与三日计划
+services/career.py        跨阶段证据链与唯一下一步
 services/scholar_search.py 无密钥 Crossref 论文发现
 services/progression.py   固定经验规则、39阶境界与突破门槛
 services/sync_backend.py  可替换联机后端接口
 services/profile_media.py 头像验证、压缩与迁移
 hub_app.py                轻量联机中心
 run_hub.py                ResearchHub EXE 启动、自检与独立数据目录
+mobile/android/           无 JavaScript 原生桥的 Android Hub 客户端
+online_integration_test.py 个人端与真实 Hub 的端到端联机验收
 safe_update.py            安全升级与旧数据迁移
 ```
 

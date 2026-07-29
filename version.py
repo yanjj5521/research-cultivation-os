@@ -9,7 +9,7 @@ def _read_version() -> str:
         value = version_file.read_text(encoding="utf-8").strip()
         if value:
             return value
-    return "2.2.0"
+    return "2.3.0"
 
 
 APP_VERSION = _read_version()

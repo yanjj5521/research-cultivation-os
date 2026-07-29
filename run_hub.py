@@ -10,6 +10,7 @@ import threading
 import urllib.request
 import webbrowser
 from pathlib import Path
+from urllib.parse import quote
 
 import uvicorn
 
@@ -103,7 +104,12 @@ def packaged_self_check() -> None:
 
     init_hub_db()
     with TestClient(app) as client:
-        for path in ("/health", "/api/v1/ping", "/register"):
+        for path in (
+            "/health",
+            "/.well-known/research-cultivation-os",
+            "/api/v1/ping",
+            "/register",
+        ):
             response = client.get(path)
             if response.status_code != 200:
                 raise SystemExit(
@@ -149,7 +155,10 @@ if __name__ == "__main__":
     print(f"\nResearch Cultivation Hub v{APP_VERSION}")
     print(f"Admin page on this computer: http://{LOCAL_HOST}:{port}")
     if not args.local_only:
-        print(f"LAN address for members: http://{lan_ip()}:{port}")
+        member_url = f"http://{lan_ip()}:{port}"
+        print(f"LAN address for members: {member_url}")
+        print(f"Android client address: {member_url}")
+        print(f"Android one-tap pairing link: wendao://connect?hub={quote(member_url, safe='')}")
         print("Windows may ask whether to allow private-network access on the first run.")
     print(f"Hub data: {DATA_ROOT}")
     if HUB_ADMIN_PATH.exists():

@@ -11,10 +11,27 @@ def main() -> None:
     init_hub_db()
     client = TestClient(hub_app.app)
     failures: list[str] = []
-    for path in ("/health", "/api/v1/ping", "/register"):
+    for path in (
+        "/health",
+        "/.well-known/research-cultivation-os",
+        "/api/v1/ping",
+        "/register",
+    ):
         response = client.get(path)
         if response.status_code != 200:
             failures.append(f"{path}: HTTP {response.status_code}")
+    mobile_discovery = client.get("/.well-known/research-cultivation-os")
+    if mobile_discovery.status_code == 200:
+        discovery = mobile_discovery.json()
+        if (
+            discovery.get("role") != "research_hub"
+            or not discovery.get("mobile_client", {}).get("supported")
+            or discovery.get("data_policy", {}).get("research_files") != "local_only"
+        ):
+            failures.append("mobile discovery endpoint reported an unsafe or incomplete contract")
+    register_page = client.get("/register")
+    if register_page.status_code == 200 and "wendao://connect?hub=" not in register_page.text:
+        failures.append("ResearchHub did not expose the Android one-tap pairing link")
     with connect_hub() as conn:
         required = {
             "hub_users", "hub_profiles", "hub_asset_transactions", "hub_inventory",

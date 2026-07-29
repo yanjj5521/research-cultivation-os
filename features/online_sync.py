@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -63,6 +65,55 @@ def _theme() -> dict[str, Any]:
 def register_online_routes(app, templates, context: Callable[..., dict[str, Any]], flash: Callable[[Request, str, str], None]):
     router = APIRouter()
 
+    def enqueue_initial_state() -> None:
+        with connect() as conn:
+            profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
+            claim_row = conn.execute(
+                "SELECT value FROM settings WHERE key='hub_initial_claim_uuid'"
+            ).fetchone()
+            scope_row = conn.execute(
+                "SELECT value FROM settings WHERE key='hub_initial_claim_scope'"
+            ).fetchone()
+            hub_scope = hashlib.sha256(
+                (
+                    f"{get_setting('hub_url', '').strip().rstrip('/')}\0"
+                    f"{get_setting('hub_api_token', '').strip()}"
+                ).encode("utf-8")
+            ).hexdigest()
+            claim_uuid = str(claim_row["value"]).strip() if claim_row else ""
+            saved_scope = str(scope_row["value"]).strip() if scope_row else ""
+            if not claim_uuid or saved_scope != hub_scope:
+                claim_uuid = uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO settings(key,value) VALUES ('hub_initial_claim_uuid',?)
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                    """,
+                    (claim_uuid,),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO settings(key,value) VALUES ('hub_initial_claim_scope',?)
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                    """,
+                    (hub_scope,),
+                )
+            inventory = [
+                dict(item)
+                for item in conn.execute(
+                    "SELECT item_key,item_type,quantity,level,equipped FROM inventory_items ORDER BY item_type,item_key"
+                )
+            ]
+            queue_event(
+                conn,
+                "initial_state_claim",
+                {"balances": local_balances(conn), "inventory": inventory},
+                event_uuid=claim_uuid,
+            )
+            queue_event(conn, "profile_updated", profile)
+            queue_event(conn, "personalization_updated", _theme())
+            conn.commit()
+
     @router.get("/online", response_class=HTMLResponse, name="online_page")
     def online_page(request: Request):
         provider = get_setting("sync_provider", "disabled")
@@ -120,6 +171,8 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             "data_policy": {
                 "research_files": "local_only",
                 "queued_while_disabled": False,
+                "research_hub_ready": True,
+                "android_client_supported": True,
                 "cloud_v2_implemented": False,
             },
             "reliability_policy": sync_health()["policy"],
@@ -132,6 +185,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         hub_url: str = Form(""),
         hub_api_token: str = Form(""),
         auto_sync: str = Form(""),
+        connect_now: str = Form(""),
     ):
         if sync_provider not in {"disabled", "legacy_hub"}:
             flash(request, "规模化云端仍是预留接口，当前不能启用。", "error")
@@ -155,11 +209,23 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             "hub_auto_sync",
             "1" if sync_provider == "legacy_hub" and auto_sync == "1" else "0",
         )
+        if sync_provider == "legacy_hub" and connect_now == "1":
+            enqueue_initial_state()
+            result = sync_now(force=True)
+            flash(
+                request,
+                (
+                    f"{result['message']} 联机通道已开启，"
+                    f"本次确认 {result.get('synced', 0)} 个状态事件。"
+                ),
+                "success" if result["ok"] else "error",
+            )
+            return RedirectResponse(request.url_for("online_page"), status_code=303)
         flash(
             request,
             "联机扩展保持关闭，本机不会上传数据。"
             if sync_provider == "disabled"
-            else "轻量同行会兼容设置已保存；可先检测连接，再决定是否自动同步。",
+            else "ResearchHub 设置已保存；点击“保存并联机”即可完成首次合并。",
         )
         return RedirectResponse(request.url_for("online_page"), status_code=303)
 
@@ -168,20 +234,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         if get_setting("sync_provider", "disabled") != "legacy_hub":
             flash(request, "当前未启用联机后端。", "error")
             return RedirectResponse(request.url_for("online_page"), status_code=303)
-        with connect() as conn:
-            profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
-            claim_uuid = get_setting("hub_initial_claim_uuid", "").strip()
-            if not claim_uuid:
-                import uuid
-                claim_uuid = uuid.uuid4().hex
-                set_setting("hub_initial_claim_uuid", claim_uuid)
-            inventory = [dict(row) for row in conn.execute(
-                "SELECT item_key,item_type,quantity,level,equipped FROM inventory_items ORDER BY item_type,item_key"
-            )]
-            queue_event(conn, "initial_state_claim", {"balances": local_balances(conn), "inventory": inventory}, event_uuid=claim_uuid)
-            queue_event(conn, "profile_updated", profile)
-            queue_event(conn, "personalization_updated", _theme())
-            conn.commit()
+        enqueue_initial_state()
         result = sync_now(force=True)
         flash(request, result["message"], "success" if result["ok"] else "error")
         return RedirectResponse(request.url_for("online_page"), status_code=303)
@@ -322,7 +375,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 conn.execute(
                     """UPDATE player_profile SET display_name=?,title=?,bio=?,skills=?,capabilities=?,goals=?,avatar_symbol=?,updated_at=? WHERE id=1""",
                     (
-                        str(profile.get("display_name", "准研一修士")), str(profile.get("title", "")),
+                        str(profile.get("display_name", "修士")), str(profile.get("title", "")),
                         str(profile.get("bio", "")), str(profile.get("skills", "")),
                         str(profile.get("capabilities", "")), str(profile.get("goals", "")),
                         str(profile.get("avatar_symbol", "道"))[:2] or "道", now_iso(),
