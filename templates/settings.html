@@ -21,12 +21,52 @@
     <label class="check-label"><input type="checkbox" name="review_popup" value="1" {% if review_popup %}checked{% endif %}>打开主页时弹出尚未复盘的最近交付</label>
     <small class="form-help">系统只使用交付文件夹里的“复盘关键文本.txt”，不会悄悄扫描你的全部论文和私人资料。</small>
     <div class="settings-divider"></div>
-    <div id="personalization"><span class="eyebrow">Personalization</span><h2>诗句、境界与全部导航名称</h2></div>
+    <div id="personalization"><span class="eyebrow">Personalization</span><h2>诗句、境界与导航</h2></div>
     <label><span>山门每日诗句池（每行一句）</span><textarea name="poem_pool" rows="10">{{ poem_pool_text }}</textarea></label>
     <small class="form-help">系统按日期轮换，同一天刷新不乱跳；留空则使用内置古诗池，完全离线也能每日更换。</small>
     <label><span>境界名称（只修改等号右边，共{{ realm_names_text.splitlines()|length }}阶）</span><textarea name="realm_names" rows="18">{{ realm_names_text }}</textarea></label>
     <label><span>导航名称与分组标题（只修改等号右边）</span><textarea name="nav_labels" rows="24">{{ nav_labels_text }}</textarea></label>
-    <small class="form-help">稳定键和网页路由不会随显示名称改变。诗句、39阶境界、全部导航标签，以及工作区目标、流程、组件与首页固定都会进入 v6 个性化包；旧版自定义名称会迁移到最接近的新境界。</small>
+    <section class="nav-layout-editor" id="navigation-layout" data-nav-layout-editor>
+      <div class="nav-layout-head">
+        <div><span class="eyebrow">Navigation Layout</span><h3>导航顺序与显示</h3><p>拖动分组或条目调整顺序；眼睛开关决定侧栏中是否显示。手机上可使用上下箭头。</p></div>
+        <button class="ghost-button" type="button" data-nav-reset>恢复默认</button>
+      </div>
+      <input type="hidden" name="nav_layout" id="navLayoutInput" value="{{ nav_layout_json|e }}">
+      <div class="nav-layout-groups">
+        {% for group in nav_layout_editor %}
+        <section class="nav-layout-group" draggable="true" data-nav-group="{{ group.key }}" data-default-order="{{ group.default_order }}">
+          <header>
+            <button class="nav-drag-handle" type="button" data-nav-drag-group aria-label="拖动{{ group.label }}分组" title="拖动分组">⋮⋮</button>
+            <strong>{{ group.label }}</strong>
+            <span>{{ group["items"]|selectattr('visible')|list|length }}/{{ group["items"]|length }} 显示</span>
+            <span class="nav-order-buttons">
+              <button type="button" data-nav-move="group-up" aria-label="分组上移">↑</button>
+              <button type="button" data-nav-move="group-down" aria-label="分组下移">↓</button>
+            </span>
+          </header>
+          <div class="nav-layout-items" data-nav-items>
+            {% for item in group["items"] %}
+            <article class="nav-layout-item {% if not item.visible %}is-hidden{% endif %}" draggable="true" data-nav-item-key="{{ item.key }}" data-default-order="{{ item.default_order }}">
+              <button class="nav-drag-handle" type="button" data-nav-drag-item aria-label="拖动{{ item.label }}" title="拖动条目">⋮</button>
+              <span class="nav-layout-icon">{{ item.icon }}</span>
+              <div><strong>{{ item.label }}</strong><small>{{ item.key }}</small></div>
+              <label class="nav-visibility-toggle" title="在侧栏显示">
+                <input type="checkbox" data-nav-visible {% if item.visible %}checked{% endif %}>
+                <span aria-hidden="true"></span>
+              </label>
+              <span class="nav-order-buttons">
+                <button type="button" data-nav-move="item-up" aria-label="条目上移">↑</button>
+                <button type="button" data-nav-move="item-down" aria-label="条目下移">↓</button>
+              </span>
+            </article>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+      <small class="nav-layout-status" id="navLayoutStatus">当前布局会随“保存设置”一起生效。即使隐藏“设置与备份”，侧栏底部仍保留“调整导航”安全入口。</small>
+    </section>
+    <small class="form-help">稳定键和网页路由不会随显示名称改变。诗句、39阶境界、全部导航标签与布局，以及工作区目标、流程、组件与首页固定都会进入 v7 个性化包；旧版自定义名称会迁移到最接近的新境界。</small>
     <button class="primary-button">保存设置</button>
   </form>
   <section class="panel backup-panel">
