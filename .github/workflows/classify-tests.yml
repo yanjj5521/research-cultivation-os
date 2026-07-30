@@ -34,8 +34,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           while IFS='|' read -r tag title; do
-            gh release view "$tag" >/dev/null
-            gh release edit "$tag" --prerelease --title "$title"
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease --title "$title"
           done <<'EOF'
           v2.1.0|测试版 · 问道科研 v2.1.0
           v2.1.1|测试版 · 问道科研 v2.1.1
