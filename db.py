@@ -51,6 +51,53 @@ DEFAULT_NAV_LABELS = {
     "backup": "完整备份",
 }
 
+NAV_GROUP_DEFAULT_ITEMS = {
+    "cultivation": (
+        "dashboard",
+        "cultivation",
+        "daily",
+        "review",
+        "plans",
+        "projects",
+        "retreat",
+    ),
+    "knowledge": (
+        "library",
+        "search",
+        "note_new",
+        "upload",
+        "folders",
+        "discover",
+    ),
+    "workspaces": (
+        "workspace_shortcuts",
+        "workspaces",
+    ),
+    "growth": (
+        "career",
+        "trials",
+        "alchemy",
+        "world",
+        "profile",
+    ),
+    "system": (
+        "assistant",
+        "online",
+        "settings",
+    ),
+}
+
+DEFAULT_NAV_LAYOUT = [
+    {
+        "key": group_key,
+        "items": [
+            {"key": item_key, "visible": True}
+            for item_key in item_keys
+        ],
+    }
+    for group_key, item_keys in NAV_GROUP_DEFAULT_ITEMS.items()
+]
+
 LEGACY_NAV_DEFAULTS = {
     "review": "昨日复盘",
     "online": "联机同步",
@@ -70,6 +117,71 @@ def normalize_nav_labels(value: Any) -> dict[str, str]:
             elif key not in value:
                 labels[key] = default
     return labels
+
+
+def _nav_visible(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "off", "no", "hidden"}
+    if value is None:
+        return False
+    return bool(value)
+
+
+def normalize_nav_layout(value: Any) -> list[dict[str, Any]]:
+    """Return a complete, forward-compatible navigation layout.
+
+    Groups and items use stable keys. Unknown values are discarded, duplicate
+    items are kept only once, and newly introduced items are appended to their
+    default group without changing a user's existing order or visibility.
+    """
+
+    source = value if isinstance(value, list) else []
+    normalized: list[dict[str, Any]] = []
+    seen_groups: set[str] = set()
+
+    for raw_group in source:
+        if not isinstance(raw_group, dict):
+            continue
+        group_key = str(raw_group.get("key", "")).strip()
+        if group_key not in NAV_GROUP_DEFAULT_ITEMS or group_key in seen_groups:
+            continue
+        seen_groups.add(group_key)
+        allowed_items = NAV_GROUP_DEFAULT_ITEMS[group_key]
+        seen_items: set[str] = set()
+        items: list[dict[str, Any]] = []
+        raw_items = raw_group.get("items", [])
+        if isinstance(raw_items, list):
+            for raw_item in raw_items:
+                if isinstance(raw_item, str):
+                    item_key = raw_item.strip()
+                    visible = True
+                elif isinstance(raw_item, dict):
+                    item_key = str(raw_item.get("key", "")).strip()
+                    visible = _nav_visible(raw_item.get("visible", True))
+                else:
+                    continue
+                if item_key not in allowed_items or item_key in seen_items:
+                    continue
+                seen_items.add(item_key)
+                items.append({"key": item_key, "visible": visible})
+        for item_key in allowed_items:
+            if item_key not in seen_items:
+                items.append({"key": item_key, "visible": True})
+        normalized.append({"key": group_key, "items": items})
+
+    for group_key, item_keys in NAV_GROUP_DEFAULT_ITEMS.items():
+        if group_key in seen_groups:
+            continue
+        normalized.append(
+            {
+                "key": group_key,
+                "items": [
+                    {"key": item_key, "visible": True}
+                    for item_key in item_keys
+                ],
+            }
+        )
+    return normalized
 
 
 def now_iso() -> str:
@@ -767,6 +879,7 @@ def init_db() -> None:
             "career_review_date": "",
             "realm_names": json.dumps(default_realm_labels(), ensure_ascii=False),
             "nav_labels": json.dumps(DEFAULT_NAV_LABELS, ensure_ascii=False),
+            "nav_layout": json.dumps(DEFAULT_NAV_LAYOUT, ensure_ascii=False),
         }
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
@@ -810,6 +923,22 @@ def init_db() -> None:
         conn.execute(
             "UPDATE settings SET value=? WHERE key='nav_labels'",
             (json.dumps(normalize_nav_labels(nav_value), ensure_ascii=False),),
+        )
+        nav_layout_row = conn.execute(
+            "SELECT value FROM settings WHERE key='nav_layout'"
+        ).fetchone()
+        try:
+            nav_layout_value = json.loads(nav_layout_row["value"]) if nav_layout_row else []
+        except json.JSONDecodeError:
+            nav_layout_value = []
+        conn.execute(
+            "UPDATE settings SET value=? WHERE key='nav_layout'",
+            (
+                json.dumps(
+                    normalize_nav_layout(nav_layout_value),
+                    ensure_ascii=False,
+                ),
+            ),
         )
         conn.execute(
             "UPDATE settings SET value=? WHERE key='portable_version'",
