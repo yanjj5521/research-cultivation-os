@@ -1,0 +1,70 @@
+name: Classify legacy releases as tests
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  classification-start:
+    if: "github.event.head_commit.message == 'release: classify legacy versions as tests'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark classification as running
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=legacy-release-classification \
+            -f description="Classifying v2.1.0-v3.0.0 as tests" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+  classify:
+    needs: classification-start
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve and reclassify legacy releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS='|' read -r tag title; do
+            gh release view "$tag" >/dev/null
+            gh release edit "$tag" --prerelease --title "$title"
+          done <<'EOF'
+          v2.1.0|测试版 · 问道科研 v2.1.0
+          v2.1.1|测试版 · 问道科研 v2.1.1
+          v2.2.0|测试版 · 问道科研 v2.2.0
+          v2.3.0|测试版 · 问道科研 v2.3.0
+          v2.3.1|测试版 · 问道科研 v2.3.1
+          v3.0.0|测试版 · 科研系统 v3.0.0
+          EOF
+
+  classification-result:
+    if: "always() && needs.classification-start.result != 'skipped'"
+    needs: [classification-start, classify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish classification result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+        run: |
+          state=failure
+          description="Legacy release classification failed"
+          if [[ "$CLASSIFY_RESULT" == "success" ]]; then
+            state=success
+            description="Legacy releases are marked as tests"
+          fi
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context=legacy-release-classification \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          [[ "$state" == "success" ]]
