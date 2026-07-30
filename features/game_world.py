@@ -7,7 +7,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from db import connect, now_iso, total_xp
 from services.economy import ASSETS, balance, balances, transact
-from services.game_world import ARTIFACTS, BUILDINGS, building_cost, building_level, inventory_map
+from services.game_world import (
+    ARTIFACTS,
+    BUILDINGS,
+    building_cost,
+    building_level,
+    equipped_artifact,
+    inventory_map,
+)
 from services.online_sync import best_effort_sync, queue_event
 from services.profile_media import (
     MAX_AVATAR_BYTES,
@@ -40,12 +47,14 @@ def register_game_routes(
                 owned = inventory.get(key)
                 level = int(owned["level"]) if owned else 0
                 price = int(spec["price"])
+                max_level = int(spec.get("max_level", 1))
                 artifact_cards.append({
                     "key": key,
                     **spec,
                     "owned": bool(owned),
                     "equipped": bool(owned and owned["equipped"]),
                     "level": level,
+                    "max_level": max_level,
                     "upgrade_cost": max(10, (price // 2) * max(level, 1)),
                     "can_afford": int(wallet["spirit_stone"]) >= price,
                     "shortfall": max(0, price - int(wallet["spirit_stone"])),
@@ -70,11 +79,14 @@ def register_game_routes(
                 conn.commit()
             eggs = [dict(row) for row in conn.execute("SELECT * FROM easter_eggs ORDER BY unlocked DESC,title")]
             profile = dict(conn.execute("SELECT * FROM player_profile WHERE id=1").fetchone())
+            active_artifact = equipped_artifact(conn)
         return templates.TemplateResponse(
             request=request,
             name="world.html",
             context=context(request, "world", wallet=wallet, assets=ASSETS, buildings=building_cards,
-                            artifacts=artifact_cards, herbs=herbs, eggs=eggs, profile=profile),
+                            artifacts=artifact_cards, herbs=herbs, eggs=eggs, profile=profile,
+                            active_artifact=active_artifact,
+                            egg_count=sum(1 for egg in eggs if egg["unlocked"])),
         )
 
     @router.post("/world/buildings/{building_key}/upgrade", name="world_building_upgrade")
@@ -132,6 +144,24 @@ def register_game_routes(
                 "INSERT INTO inventory_items(item_key,item_type,quantity,level,equipped,acquired_at,updated_at) VALUES (?,?,1,1,0,?,?)",
                 (artifact_key, "artifact", ts, ts),
             )
+            owned_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) n FROM inventory_items WHERE item_type='artifact'"
+                ).fetchone()["n"]
+            )
+            if owned_count >= 5:
+                conn.execute(
+                    """
+                    UPDATE easter_eggs
+                    SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                    WHERE egg_key='artifact_keeper'
+                    """,
+                    (ts,),
+                )
+            conn.execute(
+                "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
+                ("artifact_buy", 3, f"获得法器：{spec['name']}", ts),
+            )
             queue_event(conn, "artifact_buy", {"item_key": artifact_key})
             conn.commit()
         best_effort_sync()
@@ -149,8 +179,15 @@ def register_game_routes(
                 flash(request, "请先购入这件法器。", "error")
                 return RedirectResponse(request.url_for("world_page"), status_code=303)
             level = int(row["level"])
-            if level >= 5:
-                flash(request, "法器已达到当前版本上限。", "error")
+            max_level = int(spec.get("max_level", 1))
+            if level >= max_level:
+                flash(
+                    request,
+                    "这件法器的作用已经完整，无需继续淬炼。"
+                    if max_level == 1
+                    else "法器已达到当前版本上限。",
+                    "error",
+                )
                 return RedirectResponse(request.url_for("world_page"), status_code=303)
             cost = max(10, (int(spec["price"]) // 2) * max(level, 1))
             try:
@@ -179,7 +216,12 @@ def register_game_routes(
             queue_event(conn, "artifact_equip", {"item_key": artifact_key})
             conn.commit()
         best_effort_sync()
-        flash(request, "法器已佩戴，并展示在个人主页。", "success")
+        effect = ARTIFACTS.get(artifact_key, {}).get("effect", "")
+        flash(
+            request,
+            f"法器已佩戴。当前作用：{effect}" if effect else "法器已佩戴，并展示在个人主页。",
+            "success",
+        )
         return RedirectResponse(request.url_for("world_page"), status_code=303)
 
     @router.post("/world/eggs/moon-well", name="world_moon_well")

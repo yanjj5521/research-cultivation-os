@@ -16,7 +16,7 @@
 
   const livingScene = document.querySelector('[data-living-scene]');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  if (livingScene && !reducedMotion.matches) {
+  if (livingScene && !reducedMotion.matches && !document.body.classList.contains('motion-reduced')) {
     let animationFrame = 0;
     const resetScene = () => {
       livingScene.style.setProperty('--scene-x', '0');

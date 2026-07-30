@@ -48,6 +48,7 @@ user_config/
 build/
 dist/
 release/
+packaging/generated/
 *.apk
 *.aab
 *.jks

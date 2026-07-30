@@ -18,6 +18,17 @@
     </svg>
   </div>
   <div class="gate-embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="gate-geometry" aria-hidden="true">
+    <i class="geometry-ring ring-a"></i>
+    <i class="geometry-ring ring-b"></i>
+    <i class="geometry-prism prism-a"></i>
+    <i class="geometry-prism prism-b"></i>
+    <i class="geometry-line line-a"></i>
+    <i class="geometry-line line-b"></i>
+  </div>
+  <form class="gate-constellation-egg" method="post" action="{{ url_for('constellation_egg') }}">
+    <button type="submit" aria-label="触碰几何星图中的隐藏节点" title="这颗节点似乎可以连接"><i></i><i></i><i></i></button>
+  </form>
   <div class="gate-mountain mountain-far"></div>
   <div class="gate-mountain mountain-near"></div>
   <div class="gate-mist mist-one"></div>

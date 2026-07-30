@@ -40,9 +40,11 @@ from db import (
     set_setting,
     total_xp,
 )
+from content_library import EXTRA_POEMS
 from extractors import extract_file
 from research_tools import find_lammps_files, offline_paper_summary, parse_lammps_log, summary_to_markdown, unpack_lammps_bundle
-from services.economy import balances as asset_balances
+from services.economy import balances as asset_balances, transact as asset_transact
+from services.game_world import equipped_artifact
 from services.backups import register_backup_jobs
 from services.ai_provider import provider_status
 from services.profile_media import PROFILE_DIR, current_avatar_filename
@@ -124,6 +126,7 @@ NAV_ITEM_DEFINITIONS = {
     "workspaces": {"endpoint": "workspaces_page", "icon": "＋"},
     "career": {"endpoint": "career_page", "icon": "程"},
     "trials": {"endpoint": "trials_page", "icon": "境"},
+    "achievements": {"endpoint": "achievements_page", "icon": "章"},
     "alchemy": {"endpoint": "alchemy_page", "icon": "丹"},
     "world": {"endpoint": "world_page", "icon": "府"},
     "profile": {"endpoint": "profile_page", "icon": "我"},
@@ -171,9 +174,9 @@ DEFAULT_POEMS = [
     "及时当勉励，岁月不待人。——陶渊明",
     "宝剑锋从磨砺出，梅花香自苦寒来。——《警世贤文》",
     "莫愁前路无知己，天下谁人不识君。——高适",
-]
+] + EXTRA_POEMS
 
-app = FastAPI(title="问道科研", docs_url=None, redoc_url=None)
+app = FastAPI(title="科研系统", docs_url=None, redoc_url=None)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("RESEARCH_OS_SECRET", "local-research-os-change-me"),
@@ -416,19 +419,120 @@ def activity_streak(conn) -> int:
 
 
 def achievements(conn) -> list[dict[str, Any]]:
-    counts = {row["kind"]: row["n"] for row in conn.execute("SELECT kind, COUNT(*) n FROM entries GROUP BY kind")}
+    counts = {
+        row["kind"]: int(row["n"])
+        for row in conn.execute("SELECT kind, COUNT(*) n FROM entries GROUP BY kind")
+    }
     total = sum(counts.values())
-    domain_count = conn.execute("SELECT COUNT(DISTINCT domain) n FROM entries WHERE domain != '未分类'").fetchone()["n"]
-    tagged = conn.execute("SELECT COUNT(*) n FROM entries WHERE trim(tags) != ''").fetchone()["n"]
+    domain_count = int(
+        conn.execute(
+            "SELECT COUNT(DISTINCT domain) n FROM entries WHERE domain != '未分类'"
+        ).fetchone()["n"]
+    )
+    tagged = int(
+        conn.execute(
+            "SELECT COUNT(*) n FROM entries WHERE trim(tags) != ''"
+        ).fetchone()["n"]
+    )
+
+    def count(sql: str, params: tuple[Any, ...] = ()) -> int:
+        return int(conn.execute(sql, params).fetchone()["n"])
+
+    metrics = {
+        "plans": count("SELECT COUNT(*) n FROM study_plans"),
+        "missions": count(
+            "SELECT COUNT(*) n FROM daily_missions WHERE completed=1"
+        ),
+        "deliveries": count("SELECT COUNT(*) n FROM mission_deliveries"),
+        "review_sources": count("SELECT COUNT(*) n FROM review_sources"),
+        "review_sessions": count(
+            "SELECT COUNT(*) n FROM review_sessions WHERE status='completed'"
+        ),
+        "projects": count("SELECT COUNT(*) n FROM research_projects"),
+        "multi_workspace_projects": count(
+            """
+            SELECT COUNT(*) n FROM (
+                SELECT project_id FROM project_workspaces
+                GROUP BY project_id HAVING COUNT(*)>=2
+            )
+            """
+        ),
+        "passed_gates": count(
+            "SELECT COUNT(*) n FROM project_milestones WHERE status='passed'"
+        ),
+        "project_updates": count("SELECT COUNT(*) n FROM project_updates"),
+        "career_moments": count("SELECT COUNT(*) n FROM career_moments"),
+        "artifacts": count(
+            "SELECT COUNT(*) n FROM inventory_items WHERE item_type='artifact'"
+        ),
+        "eggs": count("SELECT COUNT(*) n FROM easter_eggs WHERE unlocked=1"),
+        "streak": activity_streak(conn),
+        "xp": total_xp(conn),
+    }
+
+    def badge(
+        name: str,
+        desc: str,
+        icon: str,
+        category: str,
+        current: int,
+        target: int,
+        tier: str = "青铜",
+    ) -> dict[str, Any]:
+        current = max(0, int(current))
+        target = max(1, int(target))
+        return {
+            "name": name,
+            "desc": desc,
+            "icon": icon,
+            "category": category,
+            "tier": tier,
+            "current": current,
+            "target": target,
+            "progress": min(100, round(current / target * 100)),
+            "unlocked": current >= target,
+        }
+
     return [
-        {"name": "初入仙途", "desc": "建立第一条科研资产", "unlocked": total >= 1, "icon": "🌱"},
-        {"name": "藏经阁弟子", "desc": "收录10份文献或文档", "unlocked": counts.get("document", 0) >= 10, "icon": "📚"},
-        {"name": "问道者", "desc": "记录10个科学问题", "unlocked": counts.get("question", 0) >= 10, "icon": "❓"},
-        {"name": "百炼成钢", "desc": "完成10次实验或失败复盘", "unlocked": counts.get("experiment", 0) + counts.get("failure", 0) >= 10, "icon": "🔥"},
-        {"name": "数据炼丹师", "desc": "建立5个数据集档案", "unlocked": counts.get("dataset", 0) >= 5, "icon": "📊"},
-        {"name": "法门传承者", "desc": "沉淀5份SOP", "unlocked": counts.get("sop", 0) >= 5, "icon": "🧭"},
-        {"name": "贯通诸域", "desc": "覆盖6个研究领域", "unlocked": domain_count >= 6, "icon": "🌌"},
-        {"name": "秩序建立者", "desc": "为50条资料添加标签", "unlocked": tagged >= 50, "icon": "🏛️"},
+        badge("初入仙途", "建立第一条科研资产", "芽", "起步", total, 1),
+        badge("藏经成卷", "收录10份文献或文档", "卷", "积累", counts.get("document", 0), 10),
+        badge("问题猎手", "记录10个科学问题", "问", "思考", counts.get("question", 0), 10),
+        badge(
+            "百炼成钢",
+            "完成10次实验或失败复盘",
+            "炼",
+            "实践",
+            counts.get("experiment", 0) + counts.get("failure", 0),
+            10,
+            "白银",
+        ),
+        badge("数据炼丹师", "建立5个数据集档案", "数", "实践", counts.get("dataset", 0), 5),
+        badge("法门传承者", "沉淀5份SOP", "法", "方法", counts.get("sop", 0), 5),
+        badge("贯通诸域", "覆盖6个研究领域", "域", "积累", domain_count, 6, "黄金"),
+        badge("秩序建立者", "为50条资料添加标签", "序", "积累", tagged, 50, "白银"),
+        badge("三策成篇", "建立3份可替换的近期计划", "策", "行动", metrics["plans"], 3),
+        badge("七步有痕", "完成7项每日任务", "步", "行动", metrics["missions"], 7),
+        badge("三十次交付", "留下30份可核验交付", "证", "行动", metrics["deliveries"], 30, "黄金"),
+        badge("十简成卷", "沉淀10份复盘关键文本", "忆", "复盘", metrics["review_sources"], 10, "白银"),
+        badge("温故知新", "完成10次复盘或秘境", "温", "复盘", metrics["review_sessions"], 10, "白银"),
+        badge("三题并进", "建立3个真实课题", "题", "课题", metrics["projects"], 3),
+        badge(
+            "诸域同参",
+            "让一个课题关联至少两个工作区",
+            "联",
+            "课题",
+            metrics["multi_workspace_projects"],
+            1,
+            "白银",
+        ),
+        badge("证据破关", "通过3个课题证据闸门", "闸", "课题", metrics["passed_gates"], 3, "黄金"),
+        badge("推进有据", "写下10条改变判断的推进记录", "进", "课题", metrics["project_updates"], 10, "白银"),
+        badge("生涯见证者", "记录5个重要生涯节点", "程", "生涯", metrics["career_moments"], 5, "白银"),
+        badge("百器归心", "收集5件各有用途的法器", "器", "趣味", metrics["artifacts"], 5, "白银"),
+        badge("彩蛋寻踪", "发现10枚隐藏彩蛋", "彩", "趣味", metrics["eggs"], 10, "黄金"),
+        badge("七日连修", "连续7天留下真实行动", "日", "坚持", metrics["streak"], 7),
+        badge("月轮不息", "连续30天留下真实行动", "月", "坚持", metrics["streak"], 30, "传说"),
+        badge("千修成林", "累计获得1000修为", "千", "成长", metrics["xp"], 1000, "黄金"),
     ]
 
 
@@ -468,6 +572,18 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
     xp = total_xp()
     with connect() as _asset_conn:
         _balances = asset_balances(_asset_conn)
+        _equipped_artifact = equipped_artifact(_asset_conn)
+        _artifact_notice_count = 0
+        if _equipped_artifact and _equipped_artifact["key"] == "echo_bell":
+            _artifact_notice_count = int(
+                _asset_conn.execute(
+                    """
+                    SELECT COUNT(*) n FROM review_answers
+                    WHERE next_due IS NOT NULL AND next_due<=?
+                    """,
+                    (date.today().isoformat(),),
+                ).fetchone()["n"]
+            )
         _profile = _asset_conn.execute(
             "SELECT avatar_symbol FROM player_profile WHERE id=1"
         ).fetchone()
@@ -480,11 +596,13 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
     _nav_labels = navigation_labels()
     base = {
         "request": request,
-        "site_name": get_setting("site_name", "问道科研"),
+        "site_name": get_setting("site_name", "科研系统"),
         "researcher_name": get_setting("researcher_name", "修士"),
         "nav_xp": xp,
         "nav_realm": current_realm(xp),
         "nav_assets": _balances,
+        "nav_artifact": _equipped_artifact,
+        "artifact_notice_count": _artifact_notice_count,
         "kinds": KINDS,
         "domains": domains(),
         "current_year": datetime.now().year,
@@ -493,6 +611,10 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "ui_accent": get_setting("ui_accent", "terracotta"),
         "ui_density": get_setting("ui_density", "comfortable"),
         "ui_scene": get_setting("ui_scene", "warm"),
+        "ui_motion": get_setting("ui_motion", "balanced"),
+        "ui_geometry": get_setting("ui_geometry", "soft"),
+        "ui_font_scale": get_setting("ui_font_scale", "normal"),
+        "ui_home_effect": get_setting("ui_home_effect", "orbits"),
         "ui_home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
         "ui_home_poem": daily_poem(),
         "day_phase": current_day_phase(),
@@ -513,6 +635,36 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
 
 def redirect(name: str, request: Request, **path_params: Any) -> RedirectResponse:
     return RedirectResponse(url=request.url_for(name, **path_params), status_code=303)
+
+
+@app.get("/achievements", response_class=HTMLResponse, name="achievements_page")
+def achievements_page(request: Request):
+    with connect() as conn:
+        items = achievements(conn)
+        egg_items = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM easter_eggs ORDER BY unlocked DESC,discovered_at,title"
+            )
+        ]
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        groups.setdefault(item["category"], []).append(item)
+    unlocked_count = sum(1 for item in items if item["unlocked"])
+    return templates.TemplateResponse(
+        request=request,
+        name="achievements.html",
+        context=context(
+            request,
+            "achievements",
+            achievements=items,
+            achievement_groups=groups,
+            unlocked_count=unlocked_count,
+            overall_progress=round(unlocked_count / max(len(items), 1) * 100),
+            easter_eggs=egg_items,
+            eggs_unlocked=sum(1 for egg in egg_items if egg["unlocked"]),
+        ),
+    )
 
 
 @app.get("/", response_class=HTMLResponse, name="dashboard")
@@ -624,6 +776,78 @@ def quick_capture(request: Request, content: str = Form(...)):
         )
         conn.commit()
     flash(request, f"闪念已收进知识库，获得 {reward} 修为。")
+    return redirect("dashboard", request)
+
+
+CONSTELLATION_ECHOES = (
+    "星图回响：证据之间的连线，往往比孤立的结论更重要。",
+    "星图回响：如果删掉最漂亮的一张图，当前判断还站得住吗？",
+    "星图回响：哪一个未测量变量，最可能让这条关系消失？",
+    "星图回响：你看到的是机制，还是恰好同向变化的两个结果？",
+)
+
+PRISM_ECHOES = (
+    "棱镜反问：如果结论完全相反，哪条证据最难解释？",
+    "棱镜反问：把当前基线换掉，优势是否仍然存在？",
+    "棱镜反问：如果异常组才是真相，主流组可能漏掉了什么？",
+    "棱镜反问：哪个边界条件一改变，就会让这套解释失效？",
+    "棱镜反问：能否设计一个结果，让你主动放弃当前假设？",
+)
+
+
+@app.post("/eggs/constellation", name="constellation_egg")
+def constellation_egg(request: Request):
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT unlocked FROM easter_eggs WHERE egg_key='constellation'"
+        ).fetchone()
+        if row and not int(row["unlocked"] or 0):
+            conn.execute(
+                """
+                UPDATE easter_eggs
+                SET unlocked=1,discovered_at=?
+                WHERE egg_key='constellation'
+                """,
+                (now_iso(),),
+            )
+            asset_transact(conn, "star_sand", 2, "发现隐藏彩蛋：几何星图")
+            conn.commit()
+            flash(
+                request,
+                "你连接了山门星图的隐藏节点：获得 2 星砂。连接本身，也是一种发现。",
+                "success",
+            )
+        else:
+            prism_active = bool(
+                conn.execute(
+                    """
+                    SELECT 1 FROM inventory_items
+                    WHERE item_key='prism_lens' AND item_type='artifact' AND equipped=1
+                    """
+                ).fetchone()
+            )
+            index_row = conn.execute(
+                "SELECT value FROM settings WHERE key='constellation_echo_index'"
+            ).fetchone()
+            try:
+                echo_index = int(index_row["value"]) if index_row else 0
+            except (TypeError, ValueError):
+                echo_index = 0
+            echoes = PRISM_ECHOES if prism_active else CONSTELLATION_ECHOES
+            message = echoes[echo_index % len(echoes)]
+            conn.execute(
+                """
+                INSERT INTO settings(key,value) VALUES ('constellation_echo_index',?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """,
+                (str(echo_index + 1),),
+            )
+            conn.commit()
+            flash(
+                request,
+                message,
+                "success",
+            )
     return redirect("dashboard", request)
 
 
@@ -1240,7 +1464,7 @@ def settings_get(request: Request):
         context=context(
             request,
             "settings",
-            current_site_name=get_setting("site_name", "问道科研"),
+            current_site_name=get_setting("site_name", "科研系统"),
             current_researcher_name=get_setting("researcher_name", "修士"),
             domain_text="\n".join(domains()),
             ai_mode=get_setting("ai_mode", "offline"),
@@ -1255,6 +1479,16 @@ def settings_get(request: Request):
             nav_layout_json=json.dumps(navigation_layout(), ensure_ascii=False),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
+            current_ui_accent=get_setting("ui_accent", "terracotta"),
+            current_ui_density=get_setting("ui_density", "comfortable"),
+            current_ui_scene=get_setting("ui_scene", "warm"),
+            current_ui_motion=get_setting("ui_motion", "balanced"),
+            current_ui_geometry=get_setting("ui_geometry", "soft"),
+            current_ui_font_scale=get_setting("ui_font_scale", "normal"),
+            current_ui_home_effect=get_setting("ui_home_effect", "orbits"),
+            current_ui_home_motto=get_setting(
+                "ui_home_motto", "让科研更好玩一点"
+            ),
             portable_version=get_setting("portable_version", APP_VERSION),
         ),
     )
@@ -1263,7 +1497,7 @@ def settings_get(request: Request):
 @app.post("/settings", name="settings_post")
 def settings_post(
     request: Request,
-    site_name: str = Form("问道科研"),
+    site_name: str = Form("科研系统"),
     researcher_name: str = Form("修士"),
     domains_text: str = Form("", alias="domains"),
     ai_mode: str = Form("offline"),
@@ -1275,11 +1509,19 @@ def settings_post(
     review_popup: str = Form(""),
     poem_pool: str = Form(""),
     home_poem: str = Form(""),
+    ui_accent: str = Form("terracotta"),
+    ui_density: str = Form("comfortable"),
+    ui_scene: str = Form("warm"),
+    ui_motion: str = Form("balanced"),
+    ui_geometry: str = Form("soft"),
+    ui_font_scale: str = Form("normal"),
+    ui_home_effect: str = Form("orbits"),
+    ui_home_motto: str = Form(""),
 ):
     domain_list = [x.strip() for x in domains_text.splitlines() if x.strip()]
     if "未分类" not in domain_list:
         domain_list.append("未分类")
-    set_setting("site_name", site_name.strip() or "问道科研")
+    set_setting("site_name", site_name.strip() or "科研系统")
     set_setting("researcher_name", researcher_name.strip() or "修士")
     set_setting("domains", json.dumps(list(dict.fromkeys(domain_list)), ensure_ascii=False))
     set_setting("ai_mode", ai_mode if ai_mode in {"offline", "ollama", "openai"} else "offline")
@@ -1324,6 +1566,49 @@ def settings_post(
         custom_poems = [home_poem.strip()[:120]]
     set_setting("ui_poem_pool", json.dumps(custom_poems, ensure_ascii=False))
     set_setting("ui_home_poem", custom_poems[0] if custom_poems else DEFAULT_POEMS[0])
+    visual_values = {
+        "ui_accent": (
+            ui_accent
+            if ui_accent
+            in {"terracotta", "amber", "sage", "ink", "cobalt", "plum", "coral"}
+            else "terracotta"
+        ),
+        "ui_density": (
+            ui_density
+            if ui_density in {"comfortable", "compact", "spacious"}
+            else "comfortable"
+        ),
+        "ui_scene": (
+            ui_scene
+            if ui_scene in {"warm", "forest", "paper", "night", "aurora", "dusk"}
+            else "warm"
+        ),
+        "ui_motion": (
+            ui_motion
+            if ui_motion in {"reduced", "balanced", "lively"}
+            else "balanced"
+        ),
+        "ui_geometry": (
+            ui_geometry
+            if ui_geometry in {"soft", "sharp", "orbital"}
+            else "soft"
+        ),
+        "ui_font_scale": (
+            ui_font_scale
+            if ui_font_scale in {"compact", "normal", "large"}
+            else "normal"
+        ),
+        "ui_home_effect": (
+            ui_home_effect
+            if ui_home_effect in {"orbits", "prism", "constellation", "none"}
+            else "orbits"
+        ),
+        "ui_home_motto": (
+            ui_home_motto.strip()[:80] or "让科研更好玩一点"
+        ),
+    }
+    for key, value in visual_values.items():
+        set_setting(key, value)
     from features.online_sync import personalization_theme
     from services.online_sync import best_effort_sync, queue_event
 
@@ -1346,6 +1631,7 @@ def export_json(request: Request):
         simulation_files = [dict(row) for row in conn.execute("SELECT * FROM simulation_files ORDER BY id")]
         workspaces = [dict(row) for row in conn.execute("SELECT * FROM workspaces ORDER BY sort_order,id")]
         research_projects = [dict(row) for row in conn.execute("SELECT * FROM research_projects ORDER BY updated_at DESC,id")]
+        project_workspaces = [dict(row) for row in conn.execute("SELECT * FROM project_workspaces ORDER BY project_id,is_primary DESC,workspace_id")]
         project_milestones = [dict(row) for row in conn.execute("SELECT * FROM project_milestones ORDER BY project_id,sort_order,id")]
         project_cases = [dict(row) for row in conn.execute("SELECT * FROM project_cases ORDER BY project_id,created_at,id")]
         project_updates = [dict(row) for row in conn.execute("SELECT * FROM project_updates ORDER BY project_id,created_at,id")]
@@ -1384,6 +1670,7 @@ def export_json(request: Request):
         "simulations": simulations, "simulation_files": simulation_files,
         "workspaces": workspaces,
         "research_projects": research_projects,
+        "project_workspaces": project_workspaces,
         "project_milestones": project_milestones,
         "project_cases": project_cases,
         "project_updates": project_updates,
@@ -1485,6 +1772,12 @@ def knowledge_export():
             dict(row)
             for row in conn.execute("SELECT * FROM research_projects ORDER BY updated_at DESC,id")
         ]
+        project_workspaces = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_workspaces ORDER BY project_id,is_primary DESC,workspace_id"
+            )
+        ]
         project_milestones = [
             dict(row)
             for row in conn.execute(
@@ -1511,7 +1804,7 @@ def knowledge_export():
         ]
     exported_at = now_iso()
     manifest = {
-        "format": "research-cultivation-knowledge-v4",
+        "format": "research-cultivation-knowledge-v5",
         "exported_at": exported_at,
         "counts": {
             "entries": len(entries),
@@ -1519,6 +1812,7 @@ def knowledge_export():
             "simulations": len(simulations),
             "workspaces": len(workspaces),
             "research_projects": len(research_projects),
+            "project_workspaces": len(project_workspaces),
             "project_milestones": len(project_milestones),
             "project_cases": len(project_cases),
             "project_updates": len(project_updates),
@@ -1583,6 +1877,10 @@ def knowledge_export():
         zf.writestr(
             "records/research_projects.json",
             json.dumps(research_projects, ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "records/project_workspaces.json",
+            json.dumps(project_workspaces, ensure_ascii=False, indent=2),
         )
         zf.writestr(
             "records/project_milestones.json",
@@ -2130,7 +2428,7 @@ def portable_export():
                         )
             zf.writestr("ResearchCultivationOS/portable.flag", "portable-data-v1\n")
             manifest = {
-                "name": "Research Cultivation OS",
+                "name": "科研系统",
                 "version": get_setting("portable_version", APP_VERSION),
                 "created_at": now_iso(),
                 "instructions": "完整解压后启动。portable.flag 会让数据继续保存在 user_data 中，不写入系统目录。",
@@ -2549,7 +2847,7 @@ from features.alchemy import register_alchemy_routes
 from features.workspaces import register_workspace_routes
 
 register_daily_routes(app, templates, context, flash)
-register_assistant_routes(app, templates, context)
+register_assistant_routes(app, templates, context, flash)
 register_career_routes(app, templates, context, flash)
 register_discover_routes(app, templates, context)
 register_folder_routes(app, templates, context)

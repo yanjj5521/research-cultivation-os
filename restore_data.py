@@ -18,7 +18,10 @@ STORAGE = STORAGE_ROOT
 
 def main() -> None:
     root = Tk(); root.withdraw(); root.attributes("-topmost", True)
-    selected = filedialog.askopenfilename(title="Select a Research OS data backup ZIP", filetypes=[("ZIP backup", "*.zip")])
+    selected = filedialog.askopenfilename(
+        title="选择科研系统完整备份 ZIP",
+        filetypes=[("ZIP 备份", "*.zip")],
+    )
     if not selected:
         return
     backup = Path(selected)
@@ -77,9 +80,9 @@ def main() -> None:
                     USER_CONFIG_DIR,
                     dirs_exist_ok=True,
                 )
-        messagebox.showinfo("Restore complete", "Data restored. Start Research Cultivation OS again.")
+        messagebox.showinfo("恢复完成", "数据已恢复，请重新启动科研系统。")
     except Exception as exc:
-        messagebox.showerror("Restore failed", str(exc))
+        messagebox.showerror("恢复失败", str(exc))
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def choose_zip() -> Path | None:
         import tkinter as tk
         from tkinter import filedialog
         root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True)
-        value = filedialog.askopenfilename(title="选择问道科研新版ZIP", filetypes=[("ZIP版本包", "*.zip")])
+        value = filedialog.askopenfilename(title="选择科研系统新版 ZIP", filetypes=[("ZIP版本包", "*.zip")])
         root.destroy()
         return Path(value).resolve() if value else None
     except Exception:
@@ -93,7 +93,7 @@ def discover_root(extracted: Path) -> Path:
     for path in extracted.rglob("app.py"):
         if path.parent.name == "ResearchCultivationOS" or (path.parent / "db.py").exists():
             return path.parent
-    raise ValueError("ZIP中没有找到问道科研程序根目录。")
+    raise ValueError("ZIP 中没有找到科研系统程序根目录。")
 
 
 def target_name(root: Path) -> str:

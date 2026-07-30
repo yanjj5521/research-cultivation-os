@@ -5,6 +5,9 @@
   <div><span class="eyebrow">Deep Focus</span><h1>入定闭关</h1><p>选定这一段时间唯一要做的事。倒计时保存在当前浏览器，刷新页面也不会重新开始。</p></div>
   <a class="soft-button" href="{{ url_for('daily_page') }}">查看今日任务</a>
 </div>
+{% if nav_artifact and nav_artifact.key == 'time_sandglass' %}
+<aside class="artifact-effect-banner"><span>⌛</span><div><strong>一刻沙漏 · Lv.{{ nav_artifact.level }}</strong><p>当前快捷节奏：25 分钟{% if nav_artifact.level >= 2 %}、45 分钟{% endif %}{% if nav_artifact.level >= 4 %}、60 分钟{% endif %}。自定义时长仍然可用。</p></div></aside>
+{% endif %}
 
 <section class="retreat-shell">
   <div class="retreat-scene">
@@ -28,9 +31,19 @@
     <div><span class="eyebrow">本次所修</span><h2>只定一件事</h2></div>
     <label><span>闭关目标</span><input id="retreatFocus" maxlength="80" placeholder="例如：读懂论文 Figure 3 并写一张图卡"></label>
     <div class="retreat-presets" aria-label="时长预设">
+      {% if nav_artifact and nav_artifact.key == 'time_sandglass' %}
+      <button type="button" data-minutes="25">25 分钟<small>小周天</small></button>
+      {% if nav_artifact.level >= 2 %}
+      <button type="button" data-minutes="45">45 分钟<small>一炷香</small></button>
+      {% endif %}
+      {% if nav_artifact.level >= 4 %}
+      <button type="button" data-minutes="60">60 分钟<small>整时段</small></button>
+      {% endif %}
+      {% else %}
       <button type="button" data-minutes="25">25 分钟<small>小周天</small></button>
       <button type="button" data-minutes="45">45 分钟<small>一炷香</small></button>
       <button type="button" data-minutes="90">90 分钟<small>深闭关</small></button>
+      {% endif %}
     </div>
     <label><span>自定义分钟</span><input id="retreatMinutes" type="number" min="1" max="480" value="25"></label>
     <div class="retreat-buttons">

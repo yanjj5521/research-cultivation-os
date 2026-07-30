@@ -123,7 +123,7 @@ def packaged_self_check() -> None:
             raise SystemExit("Packaged hub self-check failed: initial admin lifecycle is invalid.")
         if get_hub_setting(conn, "version") != APP_VERSION:
             raise SystemExit("Packaged hub self-check failed: hub database version is stale.")
-    print(f"Research Cultivation Hub {APP_VERSION} self-check PASS")
+    print(f"Research System Hub {APP_VERSION} self-check PASS")
 
 
 if __name__ == "__main__":
@@ -152,13 +152,13 @@ if __name__ == "__main__":
         open_browser(port)
         raise SystemExit(0)
 
-    print(f"\nResearch Cultivation Hub v{APP_VERSION}")
+    print(f"\nResearch System Hub v{APP_VERSION}")
     print(f"Admin page on this computer: http://{LOCAL_HOST}:{port}")
     if not args.local_only:
         member_url = f"http://{lan_ip()}:{port}"
         print(f"LAN address for members: {member_url}")
         print(f"Android client address: {member_url}")
-        print(f"Android one-tap pairing link: wendao://connect?hub={quote(member_url, safe='')}")
+        print(f"Android one-tap pairing link: researchos://connect?hub={quote(member_url, safe='')}")
         print("Windows may ask whether to allow private-network access on the first run.")
     print(f"Hub data: {DATA_ROOT}")
     if HUB_ADMIN_PATH.exists():

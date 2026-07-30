@@ -49,6 +49,85 @@ def _workspace_id(value: str) -> int | None:
     return int(value) if str(value or "").isdigit() else None
 
 
+def _workspace_ids(values: list[str]) -> list[int]:
+    return list(
+        dict.fromkeys(
+            int(value)
+            for value in values
+            if str(value or "").isdigit() and int(value) > 0
+        )
+    )[:24]
+
+
+def _project_workspaces(conn, project_id: int) -> list[dict[str, Any]]:
+    rows = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT w.id,w.name,w.icon,w.module,w.accent,pw.role,pw.is_primary
+            FROM project_workspaces pw
+            JOIN workspaces w ON w.id=pw.workspace_id
+            WHERE pw.project_id=?
+            ORDER BY pw.is_primary DESC,w.sort_order,w.id
+            """,
+            (project_id,),
+        )
+    ]
+    if rows:
+        return rows
+    legacy = conn.execute(
+        """
+        SELECT w.id,w.name,w.icon,w.module,w.accent,'' role,1 is_primary
+        FROM research_projects p
+        JOIN workspaces w ON w.id=p.workspace_id
+        WHERE p.id=?
+        """,
+        (project_id,),
+    ).fetchone()
+    return [dict(legacy)] if legacy else []
+
+
+def _set_project_workspaces(conn, project_id: int, workspace_ids: list[int]) -> None:
+    valid = [
+        int(row["id"])
+        for row in conn.execute(
+            f"SELECT id FROM workspaces WHERE id IN ({','.join('?' for _ in workspace_ids)})",
+            workspace_ids,
+        )
+    ] if workspace_ids else []
+    ordered = [item for item in workspace_ids if item in set(valid)]
+    conn.execute("DELETE FROM project_workspaces WHERE project_id=?", (project_id,))
+    ts = now_iso()
+    for index, workspace_id in enumerate(ordered):
+        conn.execute(
+            """
+            INSERT INTO project_workspaces(
+                project_id,workspace_id,role,is_primary,created_at
+            ) VALUES (?,?,?,?,?)
+            """,
+            (
+                project_id,
+                workspace_id,
+                "主要工作区" if index == 0 else "协同工作区",
+                int(index == 0),
+                ts,
+            ),
+        )
+    conn.execute(
+        "UPDATE research_projects SET workspace_id=?,updated_at=? WHERE id=?",
+        (ordered[0] if ordered else None, ts, project_id),
+    )
+    if len(ordered) >= 2:
+        conn.execute(
+            """
+            UPDATE easter_eggs
+            SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+            WHERE egg_key='many_workspaces'
+            """,
+            (ts,),
+        )
+
+
 def _safe_url(value: str) -> str:
     url = _clean(value, 1200)
     parsed = urlparse(url)
@@ -80,9 +159,8 @@ def register_project_routes(
         with connect() as conn:
             rows = conn.execute(
                 """
-                SELECT p.*,w.name workspace_name
+                SELECT p.*
                 FROM research_projects p
-                LEFT JOIN workspaces w ON w.id=p.workspace_id
                 WHERE (?='all' OR p.status=?)
                 ORDER BY p.status='active' DESC,p.updated_at DESC,p.id DESC
                 """,
@@ -91,6 +169,11 @@ def register_project_routes(
             projects: list[dict[str, Any]] = []
             for row in rows:
                 project = dict(row)
+                linked_workspaces = _project_workspaces(conn, int(row["id"]))
+                project["workspaces"] = linked_workspaces
+                project["workspace_name"] = "、".join(
+                    item["name"] for item in linked_workspaces
+                )
                 milestones = [
                     dict(item)
                     for item in conn.execute(
@@ -151,7 +234,7 @@ def register_project_routes(
         current_state: str = Form(""),
         constraints_text: str = Form(""),
         search_query: str = Form(""),
-        workspace_id: str = Form(""),
+        workspace_ids: list[str] = Form(default=[]),
         target_date: str = Form(""),
     ):
         project_title = _clean(title, 160)
@@ -185,13 +268,18 @@ def register_project_routes(
                     values["current_state"],
                     values["constraints_text"],
                     values["search_query"],
-                    _workspace_id(workspace_id),
+                    None,
                     _date(target_date),
                     ts,
                     ts,
                 ),
             )
             project_id = int(cur.lastrowid)
+            _set_project_workspaces(
+                conn,
+                project_id,
+                _workspace_ids(workspace_ids),
+            )
             seed_project_milestones(conn, project_id, values["success_criteria"])
             conn.execute(
                 "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
@@ -240,13 +328,10 @@ def register_project_routes(
                     "SELECT id,name,icon FROM workspaces WHERE active=1 ORDER BY sort_order,id"
                 )
             ]
-            workspace = (
-                conn.execute(
-                    "SELECT id,name,icon FROM workspaces WHERE id=?",
-                    (project["workspace_id"],),
-                ).fetchone()
-                if project.get("workspace_id")
-                else None
+            linked_workspaces = _project_workspaces(conn, project_id)
+            workspace = linked_workspaces[0] if linked_workspaces else None
+            project["workspace_names"] = "、".join(
+                item["name"] for item in linked_workspaces
             )
         if search and query:
             try:
@@ -270,6 +355,10 @@ def register_project_routes(
                 updates=updates,
                 workspaces=workspaces,
                 workspace=dict(workspace) if workspace else None,
+                project_workspaces=linked_workspaces,
+                project_workspace_ids={
+                    int(item["id"]) for item in linked_workspaces
+                },
                 project_statuses=PROJECT_STATUSES,
                 milestone_statuses=MILESTONE_STATUSES,
                 case_relations=CASE_RELATIONS,
@@ -293,7 +382,7 @@ def register_project_routes(
         current_state: str = Form(""),
         constraints_text: str = Form(""),
         search_query: str = Form(""),
-        workspace_id: str = Form(""),
+        workspace_ids: list[str] = Form(default=[]),
         target_date: str = Form(""),
     ):
         project_title = _clean(title, 160)
@@ -320,11 +409,16 @@ def register_project_routes(
                     _clean(current_state, 5000),
                     _clean(constraints_text, 3000),
                     _clean(search_query, 500),
-                    _workspace_id(workspace_id),
+                    None,
                     _date(target_date),
                     ts,
                     project_id,
                 ),
+            )
+            _set_project_workspaces(
+                conn,
+                project_id,
+                _workspace_ids(workspace_ids),
             )
             if criterion:
                 conn.execute(
@@ -520,6 +614,15 @@ def register_project_routes(
                 "UPDATE research_projects SET updated_at=? WHERE id=?",
                 (ts, project_id),
             )
+            if value == "passed":
+                conn.execute(
+                    """
+                    UPDATE easter_eggs
+                    SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                    WHERE egg_key='evidence_gate'
+                    """,
+                    (ts,),
+                )
             conn.commit()
         flash(request, "证据闸门已更新。", "success")
         return _go(request, "project_page", project_id=project_id)
@@ -607,6 +710,15 @@ def register_project_routes(
                 "UPDATE research_projects SET current_state=?,updated_at=? WHERE id=?",
                 (summary_text, ts, project_id),
             )
+            if value == "failure":
+                conn.execute(
+                    """
+                    UPDATE easter_eggs
+                    SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                    WHERE egg_key='failure_alchemy'
+                    """,
+                    (ts,),
+                )
             conn.commit()
         flash(request, "推进记录已保存，当前基础也已同步更新。", "success")
         return _go(request, "project_page", project_id=project_id)
@@ -636,20 +748,13 @@ def register_project_routes(
                     (project_id,),
                 )
             ]
-            workspace = (
-                conn.execute(
-                    "SELECT name FROM workspaces WHERE id=?",
-                    (project["workspace_id"],),
-                ).fetchone()
-                if project.get("workspace_id")
-                else None
-            )
+            linked_workspaces = _project_workspaces(conn, project_id)
         state = project_state(project, milestones, cases, updates)
         plan_text = render_project_plan(
             project,
             state.get("current"),
             cases,
-            str(workspace["name"]) if workspace else "",
+            "、".join(item["name"] for item in linked_workspaces),
         )
         return templates.TemplateResponse(
             request=request,

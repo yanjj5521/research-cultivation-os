@@ -57,6 +57,21 @@ def mission_rewards(mission: Any) -> dict[str, int]:
 
 def award_mission(conn, mission: Any) -> dict[str, int]:
     rewards = mission_rewards(mission)
+    equipped = conn.execute(
+        """
+        SELECT item_key,level FROM inventory_items
+        WHERE item_type='artifact' AND equipped=1
+        ORDER BY updated_at DESC,id DESC LIMIT 1
+        """
+    ).fetchone()
+    if equipped and equipped["item_key"] == "returning_furnace":
+        material_key = next(
+            (key for key in rewards if key != "spirit_stone"),
+            "spirit_wood",
+        )
+        rewards[material_key] = rewards.get(material_key, 0) + max(
+            1, int(equipped["level"] or 1)
+        )
     for asset_key, amount in rewards.items():
         transact(conn, asset_key, amount, f"完成任务：{mission['title']}", int(mission["id"]))
     return rewards

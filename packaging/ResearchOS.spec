@@ -31,6 +31,7 @@ exe = EXE(
     a.datas,
     [],
     name="ResearchOS",
+    icon=str(root / "packaging" / "generated" / "research-system.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

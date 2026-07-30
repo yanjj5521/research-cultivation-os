@@ -51,6 +51,7 @@ jobs:
       - name: Build and smoke-test both Windows executables
         shell: pwsh
         run: |
+          python packaging/build_icons.py
           pyinstaller --noconfirm --clean packaging/ResearchOS.spec
           pyinstaller --noconfirm --clean packaging/ResearchHub.spec
           & ".\dist\ResearchOS.exe" --data-dir (Join-Path $env:RUNNER_TEMP "personal") --self-check

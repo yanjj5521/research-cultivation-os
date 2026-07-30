@@ -325,6 +325,10 @@ def apply_state(conn, state: dict[str, Any]) -> None:
         "accent": "ui_accent",
         "density": "ui_density",
         "scene": "ui_scene",
+        "motion": "ui_motion",
+        "geometry": "ui_geometry",
+        "font_scale": "ui_font_scale",
+        "home_effect": "ui_home_effect",
         "home_motto": "ui_home_motto",
         "home_poem": "ui_home_poem",
         "site_name": "site_name",
@@ -332,9 +336,12 @@ def apply_state(conn, state: dict[str, Any]) -> None:
     }
     for source, setting_key in mapping.items():
         if source in theme:
+            value = str(theme[source])
+            if setting_key == "site_name" and value.strip() == "问道科研":
+                value = "科研系统"
             conn.execute(
                 "INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (setting_key, str(theme[source])),
+                (setting_key, value),
             )
     if isinstance(theme.get("poem_pool"), list):
         conn.execute(

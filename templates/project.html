@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ project.title }} · 课题推进{% endblock %}
 {% block content %}
+{% if nav_artifact and nav_artifact.key in ['evidence_seal','star_compass','measuring_ruler'] %}
+<aside class="artifact-effect-banner"><span>{{ nav_artifact.icon }}</span><div><strong>{{ nav_artifact.name }}正在生效</strong><p>{% if nav_artifact.key == 'evidence_seal' %}过闸门前依次核对：实际证据、通过或修改理由、唯一下一行动。{% elif nav_artifact.key == 'measuring_ruler' %}记录证据前先核对变量、单位、样本或重复数，以及比较基线是否一致。{% else %}把所有分支重新投影到一个问题：哪条证据最可能改变当前判断？{% endif %}</p></div></aside>
+{% endif %}
 <div class="page-head minimal-head project-head">
   <div>
-    <span class="eyebrow">{{ state.status_label }}{% if workspace %} · {{ workspace.icon }} {{ workspace.name }}{% endif %}</span>
+    <span class="eyebrow">{{ state.status_label }}{% if project_workspaces %} · {{ project_workspaces|length }} 个工作区协同{% endif %}</span>
     <h1>{{ project.title }}</h1>
     <p>{{ project.research_question or '先把这个课题要回答的科学问题写清楚。' }}</p>
   </div>
@@ -12,6 +15,14 @@
     <a class="primary-button" href="{{ url_for('project_plan', project_id=project.id) }}">生成三日推进计划</a>
   </div>
 </div>
+
+{% if project_workspaces %}
+<nav class="project-workspace-bar" aria-label="课题关联工作区">
+  {% for item in project_workspaces %}
+  <a href="{{ url_for('workspace_open', workspace_id=item.id) }}" class="workspace-chip workspace-accent-{{ item.accent }}">{{ item.icon }} {{ item.name }}{% if item.is_primary %}<small>主要</small>{% endif %}</a>
+  {% endfor %}
+</nav>
+{% endif %}
 
 <section class="project-metrics">
   <div class="metric-card"><small>课题定义</small><strong>{{ state.readiness }}%</strong><span>5 项必要信息</span></div>
@@ -156,7 +167,7 @@
         <label><span>成功标准</span><textarea name="success_criteria" rows="3">{{ project.success_criteria }}</textarea></label>
         <label><span>当前基础</span><textarea name="current_state" rows="3">{{ project.current_state }}</textarea></label>
         <label><span>现实约束</span><textarea name="constraints_text" rows="3">{{ project.constraints_text }}</textarea></label>
-        <label><span>关联工作区</span><select name="workspace_id"><option value="">暂不关联</option>{% for item in workspaces %}<option value="{{ item.id }}" {% if project.workspace_id==item.id %}selected{% endif %}>{{ item.icon }} {{ item.name }}</option>{% endfor %}</select></label>
+        <fieldset class="workspace-check-field full"><legend>关联工作区（可多选）</legend><div class="workspace-check-grid">{% for item in workspaces %}<label><input type="checkbox" name="workspace_ids" value="{{ item.id }}" {% if item.id in project_workspace_ids %}checked{% endif %}><span>{{ item.icon }} {{ item.name }}</span></label>{% endfor %}</div><small>第一个勾选项作为主要工作区；取消勾选不会删除工作区资料。</small></fieldset>
         <label><span>目标日期</span><input type="date" name="target_date" value="{{ project.target_date or '' }}"></label>
       </div>
       <button class="primary-button">保存课题定义</button>

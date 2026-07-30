@@ -1,4 +1,4 @@
-# 问道科研 Android 客户端
+# 科研系统 Android 客户端
 
 手机版是 `ResearchHub` 的安全入口，不在手机内复制桌面端 SQLite 数据库。
 

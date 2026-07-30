@@ -4,7 +4,7 @@
 {% if session %}
 <div class="page-head minimal-head">
   <div>
-    <span class="eyebrow">{{ {'yesterday':'昨日复盘','beast':'万象秘境','tribulation':'突破雷劫'}.get(session.mode,'复盘') }}</span>
+    <span class="eyebrow">{{ {'yesterday':'昨日复盘','quick':'灵光问答','mechanism':'因果迷宫','counterexample':'反证之境','beast':'万象秘境','tribulation':'突破雷劫'}.get(session.mode,'复盘') }}</span>
     <h1>{{ session.title }}</h1>
     <p>先独立回答，再查看交付证据。模型评价只是形成性反馈，最终掌握度由你确认。</p>
   </div>
@@ -27,7 +27,7 @@
   {% set answer = answers.get(loop.index0) %}
   <article class="panel review-question {% if answer %}answered{% endif %}" id="question-{{ loop.index0 }}">
     <div class="review-question-head">
-      <span class="question-bolt">{{ '雷' if session.mode=='tribulation' else ('境' if session.mode=='beast' else loop.index) }}</span>
+      <span class="question-bolt">{{ {'tribulation':'雷','beast':'境','counterexample':'反','mechanism':'因','quick':'闪'}.get(session.mode,loop.index) }}</span>
       <div><small>{{ question.kind }}</small><h2>{{ question.question }}</h2></div>
     </div>
     {% if not answer %}

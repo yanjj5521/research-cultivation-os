@@ -80,6 +80,7 @@ jobs:
 
       - name: Build personal and hub executables
         run: |
+          python packaging/build_icons.py
           pyinstaller --noconfirm --clean packaging/ResearchOS.spec
           pyinstaller --noconfirm --clean packaging/ResearchHub.spec
 
@@ -251,7 +252,7 @@ jobs:
             release/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "问道科研 v${APP_VERSION}" \
+            --title "科研系统 1.0 · v${APP_VERSION}" \
             --notes-file "docs/releases/v${APP_VERSION}.md"
 
   release-result:

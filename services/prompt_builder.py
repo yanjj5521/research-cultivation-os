@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 
-def current_state(conn) -> dict[str, Any]:
+def current_state(
+    conn,
+    workspace_id: int | None = None,
+    project_id: int | None = None,
+) -> dict[str, Any]:
     profile = conn.execute(
         "SELECT display_name,title,goals,skills,capabilities FROM player_profile WHERE id=1"
     ).fetchone()
@@ -16,25 +20,42 @@ def current_state(conn) -> dict[str, Any]:
             dict(row)
             for row in conn.execute(
                 """
-                SELECT category,title,deliverable,duration_minutes
-                FROM daily_missions
-                WHERE plan_id=? AND completed=0
-                ORDER BY day_index,optional,sort_order,id
+                SELECT m.category,m.title,m.deliverable,m.duration_minutes,
+                       w.name workspace_name,p.title project_title
+                FROM daily_missions m
+                LEFT JOIN workspaces w ON w.id=m.workspace_id
+                LEFT JOIN research_projects p ON p.id=m.project_id
+                WHERE m.plan_id=? AND m.completed=0
+                  AND (? IS NULL OR m.workspace_id=?)
+                  AND (? IS NULL OR m.project_id=?)
+                ORDER BY m.day_index,m.optional,m.sort_order,m.id
                 LIMIT 8
                 """,
-                (active_plan["id"],),
+                (
+                    active_plan["id"],
+                    workspace_id,
+                    workspace_id,
+                    project_id,
+                    project_id,
+                ),
             )
         ]
     recent = [
         dict(row)
         for row in conn.execute(
             """
-            SELECT m.title,d.review_text,d.note,d.created_at
+            SELECT m.title,d.review_text,d.note,d.created_at,
+                   w.name workspace_name,p.title project_title
             FROM mission_deliveries d
             JOIN daily_missions m ON m.id=d.mission_id
+            LEFT JOIN workspaces w ON w.id=m.workspace_id
+            LEFT JOIN research_projects p ON p.id=m.project_id
+            WHERE (? IS NULL OR m.workspace_id=?)
+              AND (? IS NULL OR m.project_id=?)
             ORDER BY d.created_at DESC
             LIMIT 6
-            """
+            """,
+            (workspace_id, workspace_id, project_id, project_id),
         )
     ]
     logs = [
@@ -47,18 +68,58 @@ def current_state(conn) -> dict[str, Any]:
         dict(row)
         for row in conn.execute(
             """
-            SELECT title,deliverable,difficulty,status
-            FROM quests
-            WHERE completed=0
-            ORDER BY difficulty DESC,updated_at DESC,id DESC
+            SELECT q.title,q.deliverable,q.difficulty,q.status,w.name workspace_name
+            FROM quests q
+            LEFT JOIN workspaces w ON w.id=q.workspace_id
+            WHERE q.completed=0
+              AND (? IS NULL OR q.workspace_id=?)
+            ORDER BY q.difficulty DESC,q.updated_at DESC,q.id DESC
             LIMIT 8
-            """
+            """,
+            (workspace_id, workspace_id),
         )
     ]
     workspaces = [
         dict(row)
         for row in conn.execute(
-            "SELECT name,module,description FROM workspaces WHERE active=1 ORDER BY sort_order,id"
+            """
+            SELECT id,name,module,description,objective
+            FROM workspaces
+            WHERE active=1 AND (? IS NULL OR id=?)
+            ORDER BY sort_order,id
+            """,
+            (workspace_id, workspace_id),
+        )
+    ]
+    projects = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT p.id,p.title,p.research_question,p.current_state,p.success_criteria,
+                   (
+                     SELECT u.next_action FROM project_updates u
+                     WHERE u.project_id=p.id AND trim(u.next_action)!=''
+                     ORDER BY u.id DESC LIMIT 1
+                   ) next_action
+            FROM research_projects p
+            WHERE p.status='active'
+              AND (? IS NULL OR p.id=?)
+              AND (
+                ? IS NULL OR EXISTS (
+                  SELECT 1 FROM project_workspaces pw
+                  WHERE pw.project_id=p.id AND pw.workspace_id=?
+                ) OR p.workspace_id=?
+              )
+            ORDER BY p.updated_at DESC,p.id DESC
+            LIMIT 8
+            """,
+            (
+                project_id,
+                project_id,
+                workspace_id,
+                workspace_id,
+                workspace_id,
+            ),
         )
     ]
     return {
@@ -69,6 +130,11 @@ def current_state(conn) -> dict[str, Any]:
         "logs": logs,
         "cultivation_tasks": cultivation_tasks,
         "workspaces": workspaces,
+        "projects": projects,
+        "scope": {
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+        },
     }
 
 
@@ -92,15 +158,20 @@ def build_plan_prompt(state: dict[str, Any]) -> str:
         f"- {item['title']}（验收：{item.get('deliverable') or '尚未填写'}）"
         for item in cultivation_tasks
     ) or "- 暂无"
+    project_text = "\n".join(
+        f"- {item['title']}：问题={item.get('research_question') or '未填写'}；"
+        f"唯一下一行动={item.get('next_action') or '未填写'}"
+        for item in state.get("projects", [])
+    ) or "- 暂无"
     workspace_text = "、".join(item["name"] for item in workspaces) or "暂无"
     goals = (profile.get("goals") or "根据当前学习状态灵活推进").strip()
-    return f"""你是我的短周期科研计划设计师。请根据网站当前状态，生成一段可直接导入“问道科研”的近期计划。
+    return f"""你是我的短周期科研计划设计师。请根据网站当前状态，生成一段可直接导入“科研系统”的近期计划。
 
 设计原则：
 1. 不建立长期固定主线，不替我承诺30天或更久；只安排未来3–7天。
 2. 严格区分两类任务：
    - “修炼任务”是跨天的能力或成果里程碑，以验收证据为完成条件，不绑定某一天。
-   - “每日任务”是今天能执行并交付的下一行动，可以关联修炼任务，但不能直接冒充里程碑。
+   - “每日任务”是今天能执行并交付的下一行动，可以关联修炼任务、工作区和课题，但不能直接冒充里程碑。
 3. 每天1–3项必做，最多1项可选，总时长控制在60–150分钟。
 4. 每项每日任务必须留下真实交付；“看视频、读一读、了解一下”不能单独算完成。
 5. 优先解决最近卡点和未完成事项；已经掌握的内容改为复盘或应用，不重复抄写。
@@ -113,7 +184,7 @@ def build_plan_prompt(state: dict[str, Any]) -> str:
 ## 修炼任务
 - [小成/进阶/突破] 跨天成果目标 | 验收：可核验的达成证据 | 工作区：已有工作区名称
 ## Day 1 | 当日主题
-- [重点] 可执行行动 | 45min | 交付：... | 关联修炼：修炼任务标题
+- [重点] 可执行行动 | 45min | 交付：... | 关联修炼：修炼任务标题 | 工作区：已有工作区名称 | 课题：已有课题名称
 - [工具] 可执行行动 | 30min | 交付：...
 - [可选] 可执行行动 | 20min | 交付：...
 
@@ -129,6 +200,9 @@ def build_plan_prompt(state: dict[str, Any]) -> str:
 现有工作区：
 {workspace_text}
 
+推进中的课题：
+{project_text}
+
 最近真实交付：
 {recent_text}
 
@@ -141,8 +215,20 @@ def build_plan_prompt(state: dict[str, Any]) -> str:
 def build_today_prompt(state: dict[str, Any]) -> str:
     profile = state.get("profile") or {}
     unfinished = state.get("unfinished") or []
+
+    def mission_line(item: dict[str, Any]) -> str:
+        line = (
+            f"- [{item['category']}] {item['title']}；"
+            f"交付={item.get('deliverable') or '最小可验证成果'}"
+        )
+        if item.get("workspace_name"):
+            line += f"；工作区={item['workspace_name']}"
+        if item.get("project_title"):
+            line += f"；课题={item['project_title']}"
+        return line
+
     task_text = "\n".join(
-        f"- [{item['category']}] {item['title']}；交付={item.get('deliverable') or '最小可验证成果'}"
+        mission_line(item)
         for item in unfinished[:4]
     ) or "- 今天尚未设置任务"
     return f"""你是我的科研学习搭档。网站只负责保存近期计划与真实交付，你负责解释和追问。

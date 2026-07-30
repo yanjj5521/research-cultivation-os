@@ -35,6 +35,7 @@ from services.progression import (
     realm_state,
 )
 from services.plan_import import parse_plan_text
+from services.prompt_builder import current_state
 from services.scholar_search import parse_crossref_payload
 from version import APP_VERSION
 
@@ -202,6 +203,49 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         ).fetchone()["n"]
     if duplicate_count != 1 or unaffordable or int(stone_after_rejections) != 0:
         failures.append("artifact repeat/insufficient guards changed inventory or balance")
+    with connect() as conn:
+        ts = now_iso()
+        conn.execute(
+            "INSERT INTO asset_transactions(asset_key,amount,reason,created_at) VALUES ('spirit_stone',30,'法器等级自检',?)",
+            (ts,),
+        )
+        conn.execute(
+            """
+            INSERT INTO inventory_items(
+                item_key,item_type,quantity,level,equipped,acquired_at,updated_at
+            ) VALUES ('measuring_ruler','artifact',1,1,0,?,?)
+            """,
+            (ts, ts),
+        )
+        conn.commit()
+    _check_response(
+        failures,
+        "scalable artifact upgrade",
+        client.post("/world/artifacts/qingxin_slip/upgrade"),
+    )
+    _check_response(
+        failures,
+        "static artifact upgrade guard",
+        client.post("/world/artifacts/measuring_ruler/upgrade"),
+    )
+    with connect() as conn:
+        qingxin_level = conn.execute(
+            "SELECT level FROM inventory_items WHERE item_key='qingxin_slip'"
+        ).fetchone()["level"]
+        ruler_level = conn.execute(
+            "SELECT level FROM inventory_items WHERE item_key='measuring_ruler'"
+        ).fetchone()["level"]
+        stone_after_upgrades = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) n FROM asset_transactions WHERE asset_key='spirit_stone'"
+        ).fetchone()["n"]
+    if (
+        int(qingxin_level) != 2
+        or int(ruler_level) != 1
+        or int(stone_after_upgrades) != 20
+    ):
+        failures.append("artifact levels charged for an effect that does not scale")
+    if "作用已完整" not in client.get("/world").text:
+        failures.append("static artifact did not explain that no upgrade was needed")
 
     plan_text = """# 自检近期计划
 > 用真实交付驱动复盘
@@ -284,6 +328,13 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     if [int(row["id"]) for row in still_active] != [int(plan["id"])]:
         failures.append("invalid activation changed the current plan")
 
+    with connect() as conn:
+        project_workspace_ids = [
+            str(row["id"])
+            for row in conn.execute(
+                "SELECT id FROM workspaces WHERE active=1 ORDER BY sort_order,id LIMIT 2"
+            )
+        ]
     project_response = client.post(
         "/projects/new",
         data={
@@ -295,6 +346,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "current_state": "已有一组预实验 CV。",
             "constraints_text": "样品和仪器时间有限。",
             "search_query": "",
+            "workspace_ids": project_workspace_ids,
         },
         follow_redirects=False,
     )
@@ -310,9 +362,18 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
                 (project["id"],),
             )
         ] if project else []
+        linked_workspaces = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM project_workspaces WHERE project_id=? ORDER BY is_primary DESC,workspace_id",
+                (project["id"],),
+            )
+        ] if project else []
     if not project or len(milestones) != 5:
         failures.append("research project did not initialize five evidence gates")
     else:
+        if len(linked_workspaces) != 2 or sum(int(item["is_primary"]) for item in linked_workspaces) != 1:
+            failures.append("research project did not keep multiple linked workspaces with one primary")
         active_gates = [item for item in milestones if item["status"] == "active"]
         if len(active_gates) != 1:
             failures.append("research project did not initialize exactly one active gate")
@@ -407,6 +468,107 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         for marker in ("三日推进计划", "导入并立即进入 Day 1", "自检证据闸门课题"):
             if marker not in project_plan.text:
                 failures.append(f"project short-plan bridge missed: {marker}")
+        if "    - [重点]" in project_plan.text:
+            failures.append("project short-plan rendered daily tasks as Markdown code blocks")
+
+        _check_response(
+            failures,
+            "project-linked quick mission",
+            client.post(
+                f"/plans/{plan['id']}/missions/new",
+                data={
+                    "day_index": "1",
+                    "category": "重点",
+                    "title": "把课题证据链连回当天",
+                    "deliverable": "一张关联卡",
+                    "duration_minutes": "25",
+                    "workspace_id": project_workspace_ids[0],
+                    "project_id": str(project["id"]),
+                },
+            ),
+        )
+        with connect() as conn:
+            linked_mission = conn.execute(
+                """
+                SELECT workspace_id,project_id FROM daily_missions
+                WHERE title='把课题证据链连回当天' ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+        if (
+            not linked_mission
+            or int(linked_mission["workspace_id"] or 0) != int(project_workspace_ids[0])
+            or int(linked_mission["project_id"] or 0) != int(project["id"])
+        ):
+            failures.append("quick mission did not preserve workspace and project links")
+
+        _check_response(
+            failures,
+            "AI collaboration return",
+            client.post(
+                "/assistant/save",
+                data={
+                    "title": "自检 AI 回存",
+                    "summary": "当前证据只支持相关性，尚不足以声明因果。",
+                    "evidence": "一张散点图和一组对照。",
+                    "next_action": "补做一组控制变量实验。",
+                    "destination": "both",
+                    "workspace_id": project_workspace_ids[0],
+                    "project_id": str(project["id"]),
+                    "mode": "data",
+                },
+            ),
+        )
+        with connect() as conn:
+            ai_entry = conn.execute(
+                "SELECT id FROM entries WHERE title='自检 AI 回存'"
+            ).fetchone()
+            ai_update = conn.execute(
+                """
+                SELECT id FROM project_updates
+                WHERE project_id=? AND summary LIKE '当前证据只支持相关性%'
+                """,
+                (project["id"],),
+            ).fetchone()
+            ai_egg = conn.execute(
+                "SELECT unlocked FROM easter_eggs WHERE egg_key='ai_handoff'"
+            ).fetchone()
+        if not ai_entry or not ai_update or not ai_egg or not int(ai_egg["unlocked"]):
+            failures.append("AI collaboration result did not return to knowledge and project state")
+        with connect() as conn:
+            scoped_state = current_state(
+                conn,
+                workspace_id=int(project_workspace_ids[0]),
+                project_id=int(project["id"]),
+            )
+        if [int(item["id"]) for item in scoped_state["workspaces"]] != [
+            int(project_workspace_ids[0])
+        ]:
+            failures.append("AI collaboration leaked unrelated workspaces into a scoped prompt")
+        before_invalid = 0
+        with connect() as conn:
+            before_invalid = conn.execute(
+                "SELECT COUNT(*) n FROM project_updates WHERE summary='不应保存的无效课题记录'"
+            ).fetchone()["n"]
+        _check_response(
+            failures,
+            "AI collaboration invalid project guard",
+            client.post(
+                "/assistant/save",
+                data={
+                    "title": "无效课题自检",
+                    "summary": "不应保存的无效课题记录",
+                    "destination": "project",
+                    "project_id": "999999",
+                    "mode": "project",
+                },
+            ),
+        )
+        with connect() as conn:
+            after_invalid = conn.execute(
+                "SELECT COUNT(*) n FROM project_updates WHERE summary='不应保存的无效课题记录'"
+            ).fetchone()["n"]
+        if int(after_invalid) != int(before_invalid):
+            failures.append("AI collaboration accepted a nonexistent project destination")
 
     _check_response(
         failures,
@@ -667,8 +829,27 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
         failures.append("review page still contained independent challenge launch forms")
     trials_landing = client.get("/trials")
     _check_response(failures, "trials landing", trials_landing)
-    if "万象秘境" not in trials_landing.text or "五问雷劫" not in trials_landing.text:
-        failures.append("independent trials page did not expose both trial types")
+    for marker in ("灵光问答", "因果迷宫", "反证之境", "万象秘境", "五问雷劫"):
+        if marker not in trials_landing.text:
+            failures.append(f"independent trials page missed mode: {marker}")
+    for mode, expected_count in {
+        "quick": 3,
+        "mechanism": 4,
+        "counterexample": 4,
+        "beast": 5,
+    }.items():
+        _check_response(
+            failures,
+            f"{mode} trial start",
+            client.post("/review/start", data={"mode": mode}),
+        )
+        with connect() as conn:
+            trial_session = conn.execute(
+                "SELECT questions_json FROM review_sessions WHERE mode=? ORDER BY id DESC LIMIT 1",
+                (mode,),
+            ).fetchone()
+        if not trial_session or len(json.loads(trial_session["questions_json"])) != expected_count:
+            failures.append(f"{mode} trial did not create {expected_count} questions")
 
     _check_response(
         failures,
@@ -880,6 +1061,14 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
                 "nav_layout": json.dumps(nav_layout, ensure_ascii=False),
                 "review_popup": "1",
                 "poem_pool": "问渠那得清如许？为有源头活水来。——朱熹\n纸上得来终觉浅，绝知此事要躬行。——陆游",
+                "ui_accent": "cobalt",
+                "ui_density": "spacious",
+                "ui_scene": "aurora",
+                "ui_motion": "lively",
+                "ui_geometry": "orbital",
+                "ui_font_scale": "large",
+                "ui_home_effect": "constellation",
+                "ui_home_motto": "让证据连接下一步",
             },
         ),
     )
@@ -929,8 +1118,16 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v7":
-        failures.append("personalization export did not use the v7 format")
+    if package.get("format") != "research-cultivation-personalization-v8":
+        failures.append("personalization export did not use the v8 format")
+    exported_theme = package.get("theme", {})
+    if (
+        exported_theme.get("motion") != "lively"
+        or exported_theme.get("geometry") != "orbital"
+        or exported_theme.get("font_scale") != "large"
+        or exported_theme.get("home_effect") != "constellation"
+    ):
+        failures.append("personalization export missed expanded local appearance")
     if len(package.get("theme", {}).get("realm_names", {})) != 39:
         failures.append("personalization export did not include the full realm map")
     if not package.get("workspaces"):
@@ -1039,7 +1236,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "/online/personalization/import",
             files={
                 "file": (
-                    "personalization-v7.json",
+                    "personalization-v8.json",
                     json.dumps(package, ensure_ascii=False).encode("utf-8"),
                     "application/json",
                 )
@@ -1058,6 +1255,8 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             failures.append("knowledge export did not include original attachments")
         if "records/research_projects.json" not in names:
             failures.append("knowledge export did not include research projects")
+        if "records/project_workspaces.json" not in names:
+            failures.append("knowledge export did not include project-workspace relationships")
         if "records/career_moments.json" not in names:
             failures.append("knowledge export did not include career milestones")
     except zipfile.BadZipFile:
@@ -1112,7 +1311,7 @@ def main() -> None:
     integration = "--integration" in sys.argv
     client = TestClient(app.app)
     pages = [
-        "/", "/cultivation", "/daily", "/review", "/trials", "/retreat", "/alchemy", "/world", "/profile", "/plans",
+        "/", "/cultivation", "/daily", "/review", "/trials", "/achievements", "/retreat", "/alchemy", "/world", "/profile", "/plans",
         "/projects", "/career", "/foundation", "/assistant", "/notes/new", "/library", "/search", "/discover", "/workspaces", "/settings", "/online",
     ]
     failures = []
@@ -1208,6 +1407,7 @@ def main() -> None:
                 "manifest.json",
                 "knowledge.json",
                 "records/research_projects.json",
+                "records/project_workspaces.json",
                 "records/project_milestones.json",
                 "records/project_cases.json",
                 "records/project_updates.json",
@@ -1215,8 +1415,8 @@ def main() -> None:
             }.issubset(names):
                 failures.append("knowledge export missed its portable index files")
             manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-            if manifest.get("format") != "research-cultivation-knowledge-v4":
-                failures.append("knowledge export did not use the career-aware v4 format")
+            if manifest.get("format") != "research-cultivation-knowledge-v5":
+                failures.append("knowledge export did not use the multi-workspace v5 format")
     except zipfile.BadZipFile:
         failures.append("knowledge export was not a valid ZIP")
     with connect() as conn:
@@ -1226,7 +1426,7 @@ def main() -> None:
             "review_sources", "review_sessions", "review_session_sources", "review_answers",
             "review_snoozes", "realm_tribulations", "special_tasks", "herb_inventory",
             "workspaces", "research_projects", "project_milestones", "project_cases",
-            "project_updates", "career_moments",
+            "project_updates", "project_workspaces", "career_moments",
         }
         found = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         missing = sorted(required_tables - found)

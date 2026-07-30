@@ -30,6 +30,8 @@
     <div class="mission-copy">
       <div class="mission-meta">
         <span>{{ mission.category }}</span>
+        {% if mission.workspace_name %}<span class="context-chip">{{ mission.workspace_icon }} {{ mission.workspace_name }}</span>{% endif %}
+        {% if mission.project_title %}<span class="context-chip project-context">课题 · {{ mission.project_title }}</span>{% endif %}
         {% if mission.track_name %}<span>{{ mission.track_icon }} 滋养{{ mission.track_name }}</span>{% endif %}
         {% if mission.cultivation_title %}<span>推进修炼 · {{ mission.cultivation_title }}</span>{% endif %}
         <span>{{ mission.duration_minutes }} 分钟</span>

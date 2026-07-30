@@ -76,6 +76,16 @@ def register_review_routes(
                 )
             ]
             source_count = conn.execute("SELECT COUNT(*) n FROM review_sources").fetchone()["n"]
+            if int(source_count) >= 10:
+                conn.execute(
+                    """
+                    UPDATE easter_eggs
+                    SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                    WHERE egg_key='review_scribe'
+                    """,
+                    (now_iso(),),
+                )
+                conn.commit()
             due_count = conn.execute(
                 "SELECT COUNT(*) n FROM review_answers WHERE next_due IS NOT NULL AND next_due<=?",
                 (date.today().isoformat(),),
@@ -113,7 +123,9 @@ def register_review_routes(
                     FROM review_sessions s
                     LEFT JOIN review_answers a ON a.session_id=s.id
                     LEFT JOIN realm_tribulations t ON t.session_id=s.id
-                    WHERE s.mode IN ('beast','tribulation')
+                    WHERE s.mode IN (
+                        'quick','mechanism','counterexample','beast','tribulation'
+                    )
                     GROUP BY s.id
                     ORDER BY s.id DESC
                     LIMIT 16
@@ -124,6 +136,24 @@ def register_review_routes(
                 "SELECT COUNT(*) n FROM review_sources"
             ).fetchone()["n"]
             tribulation_pills = _pill_quantity(conn, "tribulation_pill")
+            completed_modes = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(DISTINCT mode) n FROM review_sessions
+                    WHERE status='completed'
+                      AND mode IN ('quick','mechanism','counterexample','beast')
+                    """
+                ).fetchone()["n"]
+            )
+            weak_point = conn.execute(
+                """
+                SELECT s.title,a.feedback,a.score
+                FROM review_answers a
+                JOIN review_sessions s ON s.id=a.session_id
+                WHERE s.mode!='yesterday'
+                ORDER BY a.score ASC,a.updated_at DESC LIMIT 1
+                """
+            ).fetchone()
         realm = current_realm(xp)
         return templates.TemplateResponse(
             request=request,
@@ -137,13 +167,18 @@ def register_review_routes(
                 history=history,
                 source_count=source_count,
                 tribulation_pills=tribulation_pills,
+                completed_modes=completed_modes,
+                weak_point=dict(weak_point) if weak_point else None,
                 ai_status=provider_status(),
             ),
         )
 
     @router.post("/review/start", name="review_start")
     def review_start(request: Request, mode: str = Form("yesterday")):
-        allowed = {"yesterday", "beast", "tribulation"}
+        allowed = {
+            "yesterday", "quick", "mechanism", "counterexample", "beast",
+            "tribulation",
+        }
         mode = mode if mode in allowed else "yesterday"
         gate = None
         gate_title = ""
@@ -153,6 +188,7 @@ def register_review_routes(
                 sources = pending["sources"] if pending else []
                 source_date = pending["source_date"] if pending else ""
             else:
+                source_limit = 4 if mode == "quick" else 12
                 sources = [
                     dict(row)
                     for row in conn.execute(
@@ -160,8 +196,9 @@ def register_review_routes(
                         SELECT id,title,source_text,source_type,source_date
                         FROM review_sources
                         ORDER BY source_date DESC,id DESC
-                        LIMIT 12
-                        """
+                        LIMIT ?
+                        """,
+                        (source_limit,),
                     )
                 ]
                 source_date = sources[0]["source_date"] if sources else ""
@@ -214,7 +251,14 @@ def register_review_routes(
                     gate.title,
                 )
 
-        count = {"yesterday": 3, "beast": 4, "tribulation": 5}[mode]
+        count = {
+            "yesterday": 3,
+            "quick": 3,
+            "mechanism": 4,
+            "counterexample": 4,
+            "beast": 5,
+            "tribulation": 5,
+        }[mode]
         questions, provider, fallback_reason = generate_questions(
             combine_sources(sources),
             count=count,
@@ -222,7 +266,10 @@ def register_review_routes(
         )
         titles = {
             "yesterday": f"{source_date} 交付复盘",
-            "beast": "万象秘境 · 综合迁移",
+            "quick": "灵光问答 · 快速提取",
+            "mechanism": "因果迷宫 · 机制重建",
+            "counterexample": "反证之境 · 寻找边界",
+            "beast": "万象秘境 · 综合会试",
             "tribulation": f"突破雷劫 · {gate_title or '五问渡关'}",
         }
         with connect() as conn:
@@ -393,7 +440,13 @@ def register_review_routes(
                     (ts, session_id),
                 )
                 mode = str(session_row["mode"])
-                xp = {"yesterday": 8, "beast": 20}.get(mode, 8)
+                xp = {
+                    "yesterday": 8,
+                    "quick": 10,
+                    "mechanism": 18,
+                    "counterexample": 18,
+                    "beast": 24,
+                }.get(mode, 8)
                 if mode == "tribulation":
                     average_score = int(
                         conn.execute(
@@ -430,6 +483,27 @@ def register_review_routes(
                         if passed
                         else f"本次雷劫均分 {average_score}，达到 70 分才可突破；可整理薄弱点后再试。"
                     )
+                if mode in {"quick", "mechanism", "counterexample", "beast"}:
+                    completed_modes = int(
+                        conn.execute(
+                            """
+                            SELECT COUNT(DISTINCT mode) n FROM review_sessions
+                            WHERE status='completed'
+                              AND mode IN (
+                                'quick','mechanism','counterexample','beast'
+                              )
+                            """
+                        ).fetchone()["n"]
+                    )
+                    if completed_modes >= 3:
+                        conn.execute(
+                            """
+                            UPDATE easter_eggs
+                            SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                            WHERE egg_key='trial_triad'
+                            """,
+                            (ts,),
+                        )
                 conn.execute(
                     "INSERT INTO activities(action,xp,detail,created_at) VALUES (?,?,?,?)",
                     (

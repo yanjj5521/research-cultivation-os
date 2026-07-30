@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4e7d5">
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', path='/research-system-icon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
-<body class="theme-{{ ui_accent }} density-{{ ui_density }} scene-{{ ui_scene }} day-phase-{{ day_phase }} {% if active_page == 'dashboard' %}landing-mode{% endif %}">
+<body class="theme-{{ ui_accent }} density-{{ ui_density }} scene-{{ ui_scene }} motion-{{ ui_motion }} geometry-{{ ui_geometry }} font-{{ ui_font_scale }} home-effect-{{ ui_home_effect }} day-phase-{{ day_phase }} {% if nav_artifact %}artifact-{{ nav_artifact.key }} artifact-level-{{ nav_artifact.level }}{% endif %} {% if active_page == 'dashboard' %}landing-mode{% endif %}">
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}">
-      <span class="brand-mark">道</span>
+      <span class="brand-mark" aria-hidden="true"><i></i><b></b></span>
       <span class="brand-copy"><strong>{{ site_name }}</strong><small>{{ ui_home_motto }}</small></span>
     </a>
 
@@ -20,6 +21,11 @@
       <span class="player-level">{{ nav_xp }} XP · ◆{{ nav_assets.spirit_stone }}</span>
       <span class="mini-progress"><i style="width: {{ nav_realm.progress }}%"></i></span>
     </a>
+    {% if nav_artifact and nav_artifact.key == 'archive_key' %}
+    <a class="artifact-sidebar-action" href="{{ url_for('search') }}"><span>钥</span><div><strong>万卷快寻</strong><small>直接进入全文检索</small></div></a>
+    {% elif nav_artifact and nav_artifact.key == 'echo_bell' and artifact_notice_count %}
+    <a class="artifact-sidebar-action ringing" href="{{ url_for('review_page') }}"><span>◌</span><div><strong>{{ artifact_notice_count }} 个问题到期</strong><small>回响铃只提醒已授权复盘</small></div></a>
+    {% endif %}
 
     <nav class="side-nav" aria-label="主导航">
       {% for section in nav_sections %}

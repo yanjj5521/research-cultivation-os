@@ -28,6 +28,7 @@ DEFAULT_NAV_LABELS = {
     "career": "生涯罗盘",
     "retreat": "闭关计时",
     "trials": "秘境试炼",
+    "achievements": "成就图鉴",
     "alchemy": "炼丹炉",
     "world": "我的洞府",
     "profile": "个人主页",
@@ -76,6 +77,7 @@ NAV_GROUP_DEFAULT_ITEMS = {
     "growth": (
         "career",
         "trials",
+        "achievements",
         "alchemy",
         "world",
         "profile",
@@ -369,6 +371,17 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS project_workspaces (
+                project_id INTEGER NOT NULL,
+                workspace_id INTEGER NOT NULL,
+                role TEXT NOT NULL DEFAULT '',
+                is_primary INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(project_id,workspace_id),
+                FOREIGN KEY(project_id) REFERENCES research_projects(id) ON DELETE CASCADE,
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS project_milestones (
@@ -752,6 +765,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id, sort_order, id);
             CREATE INDEX IF NOT EXISTS idx_project_cases_project ON project_cases(project_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_project_updates_project ON project_updates(project_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_workspace ON project_workspaces(workspace_id,project_id);
             CREATE INDEX IF NOT EXISTS idx_career_moments_date ON career_moments(occurred_on DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_career_moments_project ON career_moments(project_id, occurred_on DESC);
             CREATE INDEX IF NOT EXISTS idx_research_tracks_order ON research_tracks(sort_order, id);
@@ -783,6 +797,8 @@ def init_db() -> None:
         _add_column(conn, "simulations", "workspace_id INTEGER")
         _add_column(conn, "daily_missions", "track_id INTEGER")
         _add_column(conn, "daily_missions", "quest_id INTEGER")
+        _add_column(conn, "daily_missions", "workspace_id INTEGER")
+        _add_column(conn, "daily_missions", "project_id INTEGER")
         _add_column(conn, "daily_missions", "stones_awarded INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "daily_missions", "materials_awarded INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "daily_missions", "postponed_count INTEGER NOT NULL DEFAULT 0")
@@ -809,6 +825,8 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_workspace ON experiments(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_simulations_workspace ON simulations(workspace_id, updated_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_quests_workspace ON quests(workspace_id, completed, updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_missions_workspace ON daily_missions(workspace_id,completed,day_index)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_missions_project ON daily_missions(project_id,completed,day_index)")
 
         try:
             conn.execute(
@@ -845,7 +863,7 @@ def init_db() -> None:
             "SELECT 1 FROM settings WHERE key='sync_provider'"
         ).fetchone() is not None
         defaults = {
-            "site_name": "问道科研",
+            "site_name": "科研系统",
             "researcher_name": "修士",
             "domains": json.dumps(
                 [
@@ -867,6 +885,10 @@ def init_db() -> None:
             "ui_accent": "terracotta",
             "ui_density": "comfortable",
             "ui_scene": "warm",
+            "ui_motion": "balanced",
+            "ui_geometry": "soft",
+            "ui_font_scale": "normal",
+            "ui_home_effect": "orbits",
             "ui_home_motto": "让科研更好玩一点",
             "ui_home_poem": "纸上得来终觉浅，绝知此事要躬行。——陆游",
             "ui_poem_pool": "[]",
@@ -944,6 +966,9 @@ def init_db() -> None:
             "UPDATE settings SET value=? WHERE key='portable_version'",
             (APP_VERSION,),
         )
+        conn.execute(
+            "UPDATE settings SET value='科研系统' WHERE key='site_name' AND trim(value)='问道科研'"
+        )
         ts = now_iso()
         for workspace in DEFAULT_WORKSPACES:
             profile = profile_for(workspace["module"])
@@ -997,6 +1022,17 @@ def init_db() -> None:
             row["workspace_key"]: int(row["id"])
             for row in conn.execute("SELECT id,workspace_key FROM workspaces")
         }
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO project_workspaces(
+                project_id,workspace_id,role,is_primary,created_at
+            )
+            SELECT id,workspace_id,'主要工作区',1,COALESCE(created_at,?)
+            FROM research_projects
+            WHERE workspace_id IS NOT NULL
+            """,
+            (ts,),
+        )
         if workspace_ids.get("eg-lab"):
             conn.execute(
                 "UPDATE experiments SET workspace_id=? WHERE workspace_id IS NULL",
@@ -1062,6 +1098,16 @@ def init_db() -> None:
             ("seven_deliveries", "七日炼心", "七次交付后，你开始从‘知道’走向‘能够稳定做到’。"),
             ("image_note", "画中有道", "一张图进入笔记，文字与视觉开始共同承担思考。"),
             ("all_herbs", "百草同春", "所有方向都萌芽了。广度不是分散，而是让不同能力开始互相供养。"),
+            ("balanced_plan", "七日有度", "一份近期计划既照顾眼前卡点，也为每天留下了可完成的交付。"),
+            ("many_workspaces", "诸域同参", "一个课题第一次同时连接多个工作区，实验、计算与写作开始共享同一问题。"),
+            ("ai_handoff", "借智留痕", "你没有让 AI 对话随窗口消失，而是把结论、证据与下一步重新收进系统。"),
+            ("evidence_gate", "一证破关", "第一个证据闸门不是靠感觉，而是凭证据与决策理由通过。"),
+            ("failure_alchemy", "败中炼金", "一次失败被写成可复用的预防规则，损失开始转化为方法。"),
+            ("constellation", "几何星图", "你在山门的几何轨道里找到了隐藏节点。连接本身，也是一种发现。"),
+            ("artifact_keeper", "百器归心", "你收集了五件法器，也开始理解工具只有在真实工作中生效才有意义。"),
+            ("trial_triad", "三境同游", "你完成了三种不同目的的秘境：回忆、迁移与反证开始互相支撑。"),
+            ("review_scribe", "十简成卷", "十次交付留下了可复盘关键文本，个人题库开始拥有连续性。"),
+            ("career_witness", "回望有迹", "生涯罗盘记录了第一个重要节点，未来的你能够看见为何转向。"),
         ]
         for egg_key, title, description in starter_eggs:
             conn.execute("INSERT OR IGNORE INTO easter_eggs(egg_key,title,description) VALUES (?,?,?)", (egg_key,title,description))
@@ -1148,9 +1194,12 @@ def init_db() -> None:
 
 
 def get_setting(key: str, default: str = "") -> str:
-    with connect() as conn:
+    conn = connect()
+    try:
         row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else default
+    finally:
+        conn.close()
 
 
 def set_setting(key: str, value: str) -> None:

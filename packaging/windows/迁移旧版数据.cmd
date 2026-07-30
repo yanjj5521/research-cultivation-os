@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 echo.
-echo 请在资源管理器中打开旧版问道科研文件夹，复制地址栏中的完整路径。
+echo 请在资源管理器中打开旧版科研系统（原问道科研）文件夹，复制地址栏中的完整路径。
 echo 该文件夹里面应能看到 instance 和 storage。
 echo.
 set /p "OLD_DIR=请粘贴旧版文件夹路径："

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 
@@ -20,7 +21,7 @@ def main() -> None:
         upload.parent.mkdir(parents=True, exist_ok=True)
         upload.write_bytes(b"v2.2 research evidence must survive an in-place upgrade\n")
 
-        with db.connect() as conn:
+        with closing(db.connect()) as conn:
             conn.execute(
                 """
                 INSERT INTO entries(
@@ -64,6 +65,15 @@ def main() -> None:
                     ts,
                 ),
             ).lastrowid
+            primary_workspace_id = int(
+                conn.execute(
+                    "SELECT id FROM workspaces WHERE workspace_key='eg-lab'"
+                ).fetchone()["id"]
+            )
+            conn.execute(
+                "UPDATE research_projects SET workspace_id=? WHERE id=?",
+                (primary_workspace_id, project_id),
+            )
             conn.execute(
                 """
                 INSERT INTO project_milestones(
@@ -117,6 +127,7 @@ def main() -> None:
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
             )
             conn.execute("DROP TABLE career_moments")
+            conn.execute("DROP TABLE project_workspaces")
             snapshot = {
                 table: int(
                     conn.execute(f"SELECT COUNT(*) n FROM {table}").fetchone()["n"]
@@ -136,7 +147,7 @@ def main() -> None:
 
         db.init_db()
 
-        with db.connect() as conn:
+        with closing(db.connect()) as conn:
             tables = {
                 row["name"]
                 for row in conn.execute(
@@ -144,6 +155,7 @@ def main() -> None:
                 )
             }
             assert "career_moments" in tables
+            assert "project_workspaces" in tables
             for table, expected in snapshot.items():
                 actual = int(
                     conn.execute(f"SELECT COUNT(*) n FROM {table}").fetchone()["n"]
@@ -162,6 +174,16 @@ def main() -> None:
                 "SELECT * FROM research_projects WHERE title='v2.2 真实旧课题'"
             ).fetchone()
             assert project and project["status"] == "active"
+            project_workspace = conn.execute(
+                """
+                SELECT workspace_id,is_primary FROM project_workspaces
+                WHERE project_id=?
+                """,
+                (project["id"],),
+            ).fetchone()
+            assert project_workspace
+            assert int(project_workspace["workspace_id"]) == int(project["workspace_id"])
+            assert int(project_workspace["is_primary"]) == 1
             artifact = conn.execute(
                 "SELECT level,equipped FROM inventory_items WHERE item_key='qingxin_slip'"
             ).fetchone()
@@ -181,6 +203,13 @@ def main() -> None:
                 for group in nav_layout
                 for item in group["items"]
             )
+            assert any(
+                item["key"] == "achievements"
+                for group in nav_layout
+                for item in group["items"]
+            )
+            assert db.get_setting("ui_motion") == "balanced"
+            assert db.get_setting("ui_geometry") == "soft"
 
         assert upload.read_bytes() == b"v2.2 research evidence must survive an in-place upgrade\n"
 
@@ -208,7 +237,7 @@ def main() -> None:
             for item in preserved_layout[0]["items"]
         }["assistant"] is False
 
-        with db.connect() as conn:
+        with closing(db.connect()) as conn:
             conn.execute(
                 "UPDATE settings SET value='林同学' WHERE key='researcher_name'"
             )
@@ -218,7 +247,7 @@ def main() -> None:
             conn.commit()
         db.init_db()
         assert db.get_setting("researcher_name") == "林同学"
-        with db.connect() as conn:
+        with closing(db.connect()) as conn:
             assert conn.execute(
                 "SELECT display_name FROM player_profile WHERE id=1"
             ).fetchone()["display_name"] == "林同学"

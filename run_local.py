@@ -285,17 +285,17 @@ if __name__ == "__main__":
             project_plan = client.get(f"/projects/{project['id']}/plan")
             if project_plan.status_code != 200 or "导入并立即进入 Day 1" not in project_plan.text:
                 raise SystemExit("Packaged self-check failed: the project plan bridge is incomplete.")
-        print(f"Research Cultivation OS {APP_VERSION} self-check PASS")
+        print(f"Research System {APP_VERSION} self-check PASS")
         print(f"Data: {DATA_ROOT}")
         raise SystemExit(0)
 
     port, already_running = choose_port()
     url = f"http://{HOST}:{port}"
     if already_running:
-        print(f"Research Cultivation OS is already running: {url}")
+        print(f"Research System is already running: {url}")
         open_browser(url)
     else:
-        print("\nResearch Cultivation OS")
+        print("\nResearch System")
         print(f"Open: {url}")
         print(f"Data: {DATA_ROOT}")
         print("Close this window or press Ctrl+C to stop the local server.\n")

@@ -71,6 +71,7 @@ def _exercise_personal_node(personal_data: Path, hub_url: str, token: str) -> No
     code = """
 import json
 import os
+from contextlib import closing
 from fastapi.testclient import TestClient
 import app
 from db import connect, get_setting
@@ -90,7 +91,7 @@ assert response.status_code == 200
 assert "联机通道已开启" in response.text
 assert get_setting("sync_provider") == "legacy_hub"
 assert get_setting("hub_auto_sync") == "1"
-with connect() as conn:
+with closing(connect()) as conn:
     pending = conn.execute(
         "SELECT COUNT(*) n FROM online_sync_queue WHERE status!='synced'"
     ).fetchone()["n"]
@@ -131,7 +132,7 @@ settings_response = client.post(
 )
 assert settings_response.status_code == 200
 assert json.loads(get_setting("nav_layout", "[]"))[0]["key"] == "system"
-with connect() as conn:
+with closing(connect()) as conn:
     assert conn.execute(
         "SELECT COUNT(*) n FROM online_sync_queue WHERE status!='synced'"
     ).fetchone()["n"] == 0
@@ -139,7 +140,7 @@ with connect() as conn:
 purchase = client.post("/world/artifacts/qingxin_slip/buy")
 assert purchase.status_code == 200
 assert "已获得法器" in purchase.text
-with connect() as conn:
+with closing(connect()) as conn:
     artifact = conn.execute(
         "SELECT level FROM inventory_items WHERE item_key='qingxin_slip'"
     ).fetchone()
@@ -156,20 +157,25 @@ assert pending == 0
 
 repeat = client.post("/world/artifacts/qingxin_slip/buy")
 assert repeat.status_code == 200
-with connect() as conn:
+with closing(connect()) as conn:
     assert conn.execute(
         "SELECT COUNT(*) n FROM inventory_items WHERE item_key='qingxin_slip'"
     ).fetchone()["n"] == 1
+client.close()
 """
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
         env=env,
-        check=True,
         capture_output=True,
         text=True,
         timeout=45,
     )
+    if result.returncode:
+        raise RuntimeError(
+            "Personal-node online integration subprocess failed.\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
 
 
 def _verify_hub(hub_data: Path) -> None:
@@ -177,8 +183,9 @@ def _verify_hub(hub_data: Path) -> None:
     env["RESEARCH_OS_DATA_DIR"] = str(hub_data)
     code = """
 import json
+from contextlib import closing
 from hub_db import balances, connect_hub
-with connect_hub() as conn:
+with closing(connect_hub()) as conn:
     user = conn.execute(
         "SELECT id,display_name FROM hub_users WHERE username='sync_self_test'"
     ).fetchone()
@@ -211,15 +218,19 @@ with connect_hub() as conn:
         for item in theme["nav_layout"][0]["items"]
     }["assistant"] is False
 """
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
         env=env,
-        check=True,
         capture_output=True,
         text=True,
         timeout=30,
     )
+    if result.returncode:
+        raise RuntimeError(
+            "ResearchHub verification subprocess failed.\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
 
 
 def main() -> None:

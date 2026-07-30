@@ -1,4 +1,4 @@
-# 问道科研 · Research Cultivation OS v2.3.1
+# 科研系统 1.0 · Research System v3.0.0
 
 > Windows 普通用户：从 [Releases 最新版本](https://github.com/yanjj5521/research-cultivation-os/releases/latest) 下载 `ResearchOS-*-Windows-x64.exe`。负责团队联机中心的人另下 `ResearchHub-*-Windows-x64.exe`；Android 用户下载同一 Release 中的 `ResearchOS-Mobile-*-Android.apk`。Windows 两个 EXE 均可直接双击，不要求 Python、pip 或管理员权限。
 
@@ -17,6 +17,10 @@
 ```
 
 修仙外观可以自定义，经验规则和科研数据结构保持稳定；漏一天不会清空长期成长，奖励只来自可追溯的真实行动。
+
+## 科研系统 1.0：让整段科研生涯能够被下一阶段继承
+
+本版在 v2.3.1 的自定义导航之上，补齐多工作区课题、可执行近期计划、可回存 AI 协作、扩展个性化、成就图鉴、实用法器、五类秘境、几何动效和彩蛋系统。技术版本使用 `v3.0.0`，以保持升级顺序。
 
 ## v2.3.1：导航由研究者自己编排
 
@@ -185,7 +189,7 @@ AI 生成 3–7 天近期计划
 公开发行版下载后直接双击：
 
 ```text
-ResearchOS-v2.3.1-Windows-x64.exe
+ResearchOS-v3.0.0-Windows-x64.exe
 ```
 
 默认打开 `http://127.0.0.1:5000`。无需管理员权限，也不会调用系统 Python。
@@ -193,7 +197,7 @@ ResearchOS-v2.3.1-Windows-x64.exe
 负责小团队联机中心的人下载并双击：
 
 ```text
-ResearchHub-v2.3.1-Windows-x64.exe
+ResearchHub-v3.0.0-Windows-x64.exe
 ```
 
 中心默认使用端口 `5050`，首次运行会显示局域网地址和一次性管理员凭据。需要 U 盘模式、旧版数据迁移、双端同机启动或桌面快捷方式时，再下载同一 Release 中的完整 ZIP。
@@ -203,7 +207,7 @@ ResearchHub-v2.3.1-Windows-x64.exe
 下载并安装：
 
 ```text
-ResearchOS-Mobile-v2.3.1-Android.apk
+ResearchOS-Mobile-v3.0.0-Android.apk
 ```
 
 APK 是 ResearchHub 的移动入口：先在一台电脑运行 `ResearchHub.exe`，再在手机输入窗口显示的局域网地址，或点击 Hub 页面底部的“一键打开”链接。局域网 HTTP 只允许私有地址；公网地址必须使用 HTTPS。手机端不复制个人 SQLite、论文、实验原始数据或附件。

@@ -177,7 +177,8 @@ def render_project_plan(
         project.get("success_criteria"), 260
     )
     deliverable = _single_line((milestone or {}).get("deliverable"), 160) or "一份可核验记录"
-    relation = f" | 工作区：{_single_line(workspace_name, 60)}" if workspace_name else ""
+    relation = f" | 工作区：{_single_line(workspace_name, 120)}" if workspace_name else ""
+    project_relation = f" | 课题：{title}"
     if len(cases) < 3:
         literature_action = "检索并筛选 6–10 篇相关论文，保存至少 3 篇关键先例"
         literature_delivery = "先例清单（每篇写一句与本课题的关系）"
@@ -189,14 +190,14 @@ def render_project_plan(
 ## 修炼任务
 - [进阶] 通过“{gate}”证据闸门 | 验收：{criterion or deliverable}{relation}
 ## Day 1 | 先例与判据
-- [重点] {literature_action} | 60min | 交付：{literature_delivery}
-- [工具] 把当前闸门改写成“通过/不通过”判定表 | 35min | 交付：判定表（含边界、对照与失败条件）
+- [重点] {literature_action} | 60min | 交付：{literature_delivery}{project_relation}
+- [工具] 把当前闸门改写成“通过/不通过”判定表 | 35min | 交付：判定表（含边界、对照与失败条件）{project_relation}
 ## Day 2 | 最小验证
-- [重点] 围绕“{gate}”执行一个最小可验证行动 | 75min | 交付：{deliverable}
-- [工具] 保存原始记录、参数、版本与异常 | 25min | 交付：可复现记录
+- [重点] 围绕“{gate}”执行一个最小可验证行动 | 75min | 交付：{deliverable}{project_relation}
+- [工具] 保存原始记录、参数、版本与异常 | 25min | 交付：可复现记录{project_relation}
 ## Day 3 | 证据决策
-- [重点] 将结果写成“主张—证据—反例—边界”四列表 | 55min | 交付：证据矩阵
-- [重点] 按成功标准做 Go / Revise / Stop 决策，并只保留一个下一行动 | 30min | 交付：一段决策记录
+- [重点] 将结果写成“主张—证据—反例—边界”四列表 | 55min | 交付：证据矩阵{project_relation}
+- [重点] 按成功标准做 Go / Revise / Stop 决策，并只保留一个下一行动 | 30min | 交付：一段决策记录{project_relation}
 """
 
 
@@ -226,6 +227,7 @@ def build_project_prompt(
 成功标准：{project.get('success_criteria') or '未填写'}
 当前基础：{project.get('current_state') or '未填写'}
 现实约束：{project.get('constraints_text') or '未填写'}
+关联工作区：{project.get('workspace_names') or '未关联'}
 当前证据闸门：{current.get('title') or '未设置'}
 闸门通过条件：{current.get('criterion') or '未设置'}
 

@@ -150,6 +150,14 @@ def register_career_routes(
                     ts,
                 ),
             )
+            conn.execute(
+                """
+                UPDATE easter_eggs
+                SET unlocked=1,discovered_at=COALESCE(discovered_at,?)
+                WHERE egg_key='career_witness'
+                """,
+                (ts,),
+            )
             conn.commit()
         flash(request, "这个节点已经进入科研生涯档案。")
         return _go(request)

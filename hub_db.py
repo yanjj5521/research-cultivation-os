@@ -288,7 +288,7 @@ def init_hub_db() -> None:
             """
         )
         defaults = {
-            "site_name": "问道科研 · 同行会",
+            "site_name": "科研系统 · 同行会",
             "version": APP_VERSION,
             "registration_mode": "invite",
             "max_members": "10",
@@ -299,12 +299,18 @@ def init_hub_db() -> None:
             "UPDATE hub_settings SET value=? WHERE key='version'",
             (APP_VERSION,),
         )
+        conn.execute(
+            """
+            UPDATE hub_settings SET value='科研系统 · 同行会'
+            WHERE key='site_name' AND trim(value)='问道科研 · 同行会'
+            """
+        )
         admin = conn.execute("SELECT id FROM hub_users WHERE role='admin' LIMIT 1").fetchone()
         if not admin:
             password = secrets.token_urlsafe(10)
             user_id, token = create_user(conn, "admin", password, "洞府主人", role="admin")
             HUB_ADMIN_PATH.write_text(
-                f"问道科研 v{APP_VERSION} 轻量联机中心管理员凭据\n"
+                f"科研系统 v{APP_VERSION} 轻量联机中心管理员凭据\n"
                 "================================\n"
                 f"用户名: admin\n密码: {password}\nAPI Token: {token}\n\n"
                 "首次登录后请立即修改密码。修改成功后系统会销毁这份一次性凭据文件；\n"

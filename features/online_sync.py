@@ -56,13 +56,17 @@ def personalization_theme() -> dict[str, Any]:
         "accent": get_setting("ui_accent", "terracotta"),
         "density": get_setting("ui_density", "comfortable"),
         "scene": get_setting("ui_scene", "warm"),
+        "motion": get_setting("ui_motion", "balanced"),
+        "geometry": get_setting("ui_geometry", "soft"),
+        "font_scale": get_setting("ui_font_scale", "normal"),
+        "home_effect": get_setting("ui_home_effect", "orbits"),
         "home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
         "home_poem": get_setting(
             "ui_home_poem",
             "纸上得来终觉浅，绝知此事要躬行。——陆游",
         ),
         "poem_pool": _json_setting("ui_poem_pool", []),
-        "site_name": get_setting("site_name", "问道科研"),
+        "site_name": get_setting("site_name", "科研系统"),
         "realm_names": normalize_realm_labels(_json_setting("realm_names", {})),
         "nav_labels": normalize_nav_labels(_json_setting("nav_labels", {})),
         "nav_layout": normalize_nav_layout(_json_setting("nav_layout", [])),
@@ -172,7 +176,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
             get_setting("hub_api_token", ""),
         )
         return {
-            "application": "Research Cultivation OS",
+            "application": "科研系统",
             "local_version": get_setting("portable_version", APP_VERSION),
             "active_backend": backend.capabilities.as_dict(),
             "available_backends": all_backend_capabilities(),
@@ -278,17 +282,35 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         request: Request,
         accent: str = Form("terracotta"), density: str = Form("comfortable"),
         scene: str = Form("warm"), home_motto: str = Form(""), home_poem: str = Form(""),
-        poem_pool: str = Form(""),
+        poem_pool: str = Form(""), motion: str = Form("balanced"),
+        geometry: str = Form("soft"), font_scale: str = Form("normal"),
+        home_effect: str = Form("orbits"),
     ):
         allowed = {
-            "accent": {"terracotta", "amber", "sage", "ink"},
-            "density": {"comfortable", "compact"},
-            "scene": {"warm", "forest", "paper", "night"},
+            "accent": {
+                "terracotta", "amber", "sage", "ink", "cobalt", "plum", "coral"
+            },
+            "density": {"comfortable", "compact", "spacious"},
+            "scene": {"warm", "forest", "paper", "night", "aurora", "dusk"},
+            "motion": {"reduced", "balanced", "lively"},
+            "geometry": {"soft", "sharp", "orbital"},
+            "font_scale": {"compact", "normal", "large"},
+            "home_effect": {"orbits", "prism", "constellation", "none"},
         }
         values = {
             "accent": accent if accent in allowed["accent"] else "terracotta",
             "density": density if density in allowed["density"] else "comfortable",
             "scene": scene if scene in allowed["scene"] else "warm",
+            "motion": motion if motion in allowed["motion"] else "balanced",
+            "geometry": geometry if geometry in allowed["geometry"] else "soft",
+            "font_scale": (
+                font_scale if font_scale in allowed["font_scale"] else "normal"
+            ),
+            "home_effect": (
+                home_effect
+                if home_effect in allowed["home_effect"]
+                else "orbits"
+            ),
             "home_motto": home_motto.strip()[:80] or "让科研更好玩一点",
             "home_poem": home_poem.strip()[:120] or "纸上得来终觉浅，绝知此事要躬行。——陆游",
             "poem_pool": [line.strip()[:120] for line in poem_pool.splitlines() if line.strip()][:366],
@@ -296,6 +318,10 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         set_setting("ui_accent", values["accent"])
         set_setting("ui_density", values["density"])
         set_setting("ui_scene", values["scene"])
+        set_setting("ui_motion", values["motion"])
+        set_setting("ui_geometry", values["geometry"])
+        set_setting("ui_font_scale", values["font_scale"])
+        set_setting("ui_home_effect", values["home_effect"])
         set_setting("ui_home_motto", values["home_motto"])
         set_setting("ui_home_poem", values["home_poem"])
         set_setting("ui_poem_pool", json.dumps(values["poem_pool"], ensure_ascii=False))
@@ -324,8 +350,8 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 item["tools"] = normalize_toolset(item.pop("toolset_json", "[]"), module)
                 workspaces.append(item)
         payload = {
-            "format": "research-cultivation-personalization-v7",
-            "schema_version": 7,
+            "format": "research-cultivation-personalization-v8",
+            "schema_version": 8,
             "exported_at": now_iso(),
             "theme": personalization_theme(),
             "profile": {k: profile[k] for k in ("display_name", "title", "bio", "skills", "capabilities", "goals", "avatar_symbol")},
@@ -348,6 +374,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 "research-cultivation-personalization-v5",
                 "research-cultivation-personalization-v6",
                 "research-cultivation-personalization-v7",
+                "research-cultivation-personalization-v8",
             }:
                 raise ValueError("不是受支持的个性化包")
             theme = data.get("theme", {})
@@ -356,6 +383,8 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 ("accent", "ui_accent", "terracotta"), ("density", "ui_density", "comfortable"),
                 ("scene", "ui_scene", "warm"), ("home_motto", "ui_home_motto", "让科研更好玩一点"),
                 ("home_poem", "ui_home_poem", "纸上得来终觉浅，绝知此事要躬行。——陆游"),
+                ("motion", "ui_motion", "balanced"), ("geometry", "ui_geometry", "soft"),
+                ("font_scale", "ui_font_scale", "normal"), ("home_effect", "ui_home_effect", "orbits"),
             ]:
                 set_setting(key, str(theme.get(source, default)))
             if isinstance(theme.get("poem_pool"), list):
@@ -382,7 +411,13 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                     json.dumps(normalize_nav_layout(theme["nav_layout"]), ensure_ascii=False),
                 )
             if str(theme.get("site_name", "")).strip():
-                set_setting("site_name", str(theme["site_name"]).strip()[:60])
+                imported_site_name = str(theme["site_name"]).strip()[:60]
+                set_setting(
+                    "site_name",
+                    "科研系统"
+                    if imported_site_name == "问道科研"
+                    else imported_site_name,
+                )
             if str(theme.get("review_popup", "1")) in {"0", "1"}:
                 set_setting("review_popup", str(theme.get("review_popup", "1")))
             with connect() as conn:

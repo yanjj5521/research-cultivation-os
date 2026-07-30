@@ -21,6 +21,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -85,7 +86,11 @@ public final class MainActivity extends Activity {
 
     private String hubFromIntent(Intent intent) {
         Uri data = intent == null ? null : intent.getData();
-        if (data == null || !"wendao".equalsIgnoreCase(data.getScheme())) {
+        String scheme = data == null ? "" : data.getScheme();
+        if (
+            !"researchos".equalsIgnoreCase(scheme)
+            && !"wendao".equalsIgnoreCase(scheme)
+        ) {
             return "";
         }
         String value = data.getQueryParameter("hub");
@@ -111,10 +116,10 @@ public final class MainActivity extends Activity {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView seal = text("道", 32, Color.WHITE);
-        seal.setGravity(Gravity.CENTER);
-        seal.setBackgroundColor(Color.rgb(183, 103, 72));
-        card.addView(seal, sized(dp(72), dp(72), dp(0), dp(0), dp(18)));
+        ImageView appMark = new ImageView(this);
+        appMark.setImageResource(R.drawable.ic_launcher);
+        appMark.setContentDescription(getString(R.string.app_name));
+        card.addView(appMark, sized(dp(72), dp(72), dp(0), dp(0), dp(18)));
 
         TextView title = text(getString(R.string.mobile_title), 25, Color.rgb(73, 56, 46));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -274,7 +279,7 @@ public final class MainActivity extends Activity {
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(14), dp(8), dp(8), dp(8));
         toolbar.setBackgroundColor(Color.rgb(244, 231, 213));
-        TextView title = text("问道科研 · 同行会", 15, Color.rgb(73, 56, 46));
+        TextView title = text("科研系统 · 同行会", 15, Color.rgb(73, 56, 46));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, dp(42), 1f));
         Button home = compactButton("主页");

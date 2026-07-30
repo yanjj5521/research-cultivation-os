@@ -49,7 +49,7 @@ TEMPLATE_DIR = BASE_DIR / "hub_templates"
 STATIC_DIR = BASE_DIR / "hub_static"
 VERSION = APP_VERSION
 
-app = FastAPI(title="问道科研同行会", docs_url=None, redoc_url=None)
+app = FastAPI(title="科研系统同行会", docs_url=None, redoc_url=None)
 HUB_HTTPS_ONLY = os.getenv("HUB_HTTPS_ONLY", "0").strip() == "1"
 HUB_TRUST_PROXY = os.getenv("HUB_TRUST_PROXY", "0").strip() == "1"
 app.add_middleware(SessionMiddleware, secret_key=hub_secret(), same_site="lax", https_only=HUB_HTTPS_ONLY)
@@ -143,7 +143,7 @@ def hub_context(request: Request, active: str, **extra: Any) -> dict[str, Any]:
         "csrf": csrf_token(request),
         "flashes": request.session.pop("flashes", []),
         "version": VERSION,
-        "site_name": "问道科研 · 同行会",
+        "site_name": "科研系统 · 同行会",
     }
     if user:
         with connect_hub() as conn:
@@ -212,7 +212,7 @@ def parse_theme(value: str | dict[str, Any]) -> dict[str, Any]:
         "scene": data.get("scene", "warm"),
         "home_motto": str(data.get("home_motto", "让科研更好玩一点"))[:80],
         "home_poem": str(data.get("home_poem", "纸上得来终觉浅，绝知此事要躬行。——陆游"))[:120],
-        "site_name": str(data.get("site_name", "问道科研"))[:60],
+        "site_name": str(data.get("site_name", "科研系统"))[:60],
         "review_popup": "1" if str(data.get("review_popup", "1")) == "1" else "0",
     }
     result["realm_names"] = normalize_realm_labels(data.get("realm_names", {}))
@@ -446,7 +446,7 @@ def health() -> dict[str, Any]:
 @app.get("/.well-known/research-cultivation-os")
 def mobile_discovery() -> dict[str, Any]:
     return {
-        "product": "Research Cultivation OS",
+        "product": "科研系统",
         "role": "research_hub",
         "version": VERSION,
         "mobile_client": {

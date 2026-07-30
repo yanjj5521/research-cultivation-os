@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Research Cultivation OS
+title 科研系统
 
 set "PY_CMD="
 where py >nul 2>nul

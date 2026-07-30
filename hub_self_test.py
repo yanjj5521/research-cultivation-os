@@ -30,7 +30,7 @@ def main() -> None:
         ):
             failures.append("mobile discovery endpoint reported an unsafe or incomplete contract")
     register_page = client.get("/register")
-    if register_page.status_code == 200 and "wendao://connect?hub=" not in register_page.text:
+    if register_page.status_code == 200 and "researchos://connect?hub=" not in register_page.text:
         failures.append("ResearchHub did not expose the Android one-tap pairing link")
     parsed_theme = hub_app.parse_theme(
         {

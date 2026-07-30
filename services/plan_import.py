@@ -17,6 +17,8 @@ class MissionSpec:
     xp: int = 0
     optional: bool = False
     cultivation_title: str = ""
+    workspace_name: str = ""
+    project_name: str = ""
 
     def __post_init__(self) -> None:
         self.duration_minutes = max(5, min(int(self.duration_minutes or 30), 240))
@@ -256,6 +258,8 @@ def parse_plan_text(text: str) -> PlanSpec:
         deliverable = ""
         detail = ""
         cultivation_title = ""
+        workspace_name = ""
+        project_name = ""
         for part in parts[1:]:
             lower = part.lower()
             if "min" in lower or "分钟" in part:
@@ -267,6 +271,10 @@ def parse_plan_text(text: str) -> PlanSpec:
                 deliverable = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             elif re.match(r"^(关联修炼|修炼任务|关联目标)[：:]", part):
                 cultivation_title = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+            elif re.match(r"^(工作区|领域)[：:]", part):
+                workspace_name = re.split(r"[：:]", part, maxsplit=1)[1].strip()
+            elif re.match(r"^(课题|关联课题|项目)[：:]", part):
+                project_name = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             elif re.match(r"^(说明|提示|内容)[：:]", part):
                 detail = re.split(r"[：:]", part, maxsplit=1)[1].strip()
             else:
@@ -280,6 +288,8 @@ def parse_plan_text(text: str) -> PlanSpec:
                 duration_minutes=max(5, min(duration, 240)),
                 optional=optional,
                 cultivation_title=cultivation_title,
+                workspace_name=workspace_name,
+                project_name=project_name,
             )
         )
 
@@ -334,6 +344,10 @@ def render_plan_text(plan: PlanSpec) -> str:
                 parts.append(f"交付：{mission.deliverable}")
             if mission.cultivation_title:
                 parts.append(f"关联修炼：{mission.cultivation_title}")
+            if mission.workspace_name:
+                parts.append(f"工作区：{mission.workspace_name}")
+            if mission.project_name:
+                parts.append(f"课题：{mission.project_name}")
             if mission.description:
                 parts.append(f"说明：{mission.description}")
             lines.append(" | ".join(parts))
