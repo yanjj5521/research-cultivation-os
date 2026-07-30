@@ -69,6 +69,7 @@ def _exercise_personal_node(personal_data: Path, hub_url: str, token: str) -> No
         }
     )
     code = """
+import json
 import os
 from fastapi.testclient import TestClient
 import app
@@ -99,6 +100,41 @@ with connect() as conn:
     }
 assert pending == 0
 assert {"initial_state_claim", "profile_updated", "personalization_updated"}.issubset(initial_types)
+
+layout = app.navigation_layout()
+groups = {group["key"]: group for group in layout}
+layout = [
+    groups["system"],
+    groups["cultivation"],
+    groups["knowledge"],
+    groups["workspaces"],
+    groups["growth"],
+]
+for item in groups["system"]["items"]:
+    if item["key"] == "assistant":
+        item["visible"] = False
+settings_response = client.post(
+    "/settings",
+    data={
+        "site_name": "问道科研",
+        "researcher_name": "修士",
+        "domains": "电化学\\n未分类",
+        "ai_mode": "offline",
+        "ai_endpoint": "http://127.0.0.1:11434/api/generate",
+        "ai_model": "qwen2.5:7b",
+        "realm_names": "",
+        "nav_labels": "",
+        "nav_layout": json.dumps(layout, ensure_ascii=False),
+        "review_popup": "1",
+        "poem_pool": "",
+    },
+)
+assert settings_response.status_code == 200
+assert json.loads(get_setting("nav_layout", "[]"))[0]["key"] == "system"
+with connect() as conn:
+    assert conn.execute(
+        "SELECT COUNT(*) n FROM online_sync_queue WHERE status!='synced'"
+    ).fetchone()["n"] == 0
 
 purchase = client.post("/world/artifacts/qingxin_slip/buy")
 assert purchase.status_code == 200
@@ -140,6 +176,7 @@ def _verify_hub(hub_data: Path) -> None:
     env = os.environ.copy()
     env["RESEARCH_OS_DATA_DIR"] = str(hub_data)
     code = """
+import json
 from hub_db import balances, connect_hub
 with connect_hub() as conn:
     user = conn.execute(
@@ -162,6 +199,17 @@ with connect_hub() as conn:
     ).fetchone()
     assert inventory and int(inventory["level"]) == 1
     assert balances(conn, int(user["id"]))["spirit_stone"] == 0
+    theme = json.loads(
+        conn.execute(
+            "SELECT theme_json FROM hub_profiles WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()["theme_json"]
+    )
+    assert theme["nav_layout"][0]["key"] == "system"
+    assert {
+        item["key"]: item["visible"]
+        for item in theme["nav_layout"][0]["items"]
+    }["assistant"] is False
 """
     subprocess.run(
         [sys.executable, "-c", code],
