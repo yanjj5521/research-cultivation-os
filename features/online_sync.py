@@ -10,7 +10,14 @@ from typing import Any, Callable
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
+from db import (
+    connect,
+    get_setting,
+    normalize_nav_labels,
+    normalize_nav_layout,
+    now_iso,
+    set_setting,
+)
 from runtime_paths import STORAGE_ROOT
 from services.online_sync import (
     best_effort_sync,
@@ -44,7 +51,7 @@ def _json_setting(key: str, fallback: Any) -> Any:
         return fallback
 
 
-def _theme() -> dict[str, Any]:
+def personalization_theme() -> dict[str, Any]:
     return {
         "accent": get_setting("ui_accent", "terracotta"),
         "density": get_setting("ui_density", "comfortable"),
@@ -58,6 +65,7 @@ def _theme() -> dict[str, Any]:
         "site_name": get_setting("site_name", "问道科研"),
         "realm_names": normalize_realm_labels(_json_setting("realm_names", {})),
         "nav_labels": normalize_nav_labels(_json_setting("nav_labels", {})),
+        "nav_layout": normalize_nav_layout(_json_setting("nav_layout", [])),
         "review_popup": get_setting("review_popup", "1"),
     }
 
@@ -111,7 +119,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 event_uuid=claim_uuid,
             )
             queue_event(conn, "profile_updated", profile)
-            queue_event(conn, "personalization_updated", _theme())
+            queue_event(conn, "personalization_updated", personalization_theme())
             conn.commit()
 
     @router.get("/online", response_class=HTMLResponse, name="online_page")
@@ -143,7 +151,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 hub_url_ok=url_ok,
                 hub_url_policy=url_policy,
                 auto_sync=get_setting("hub_auto_sync", "0") == "1",
-                theme=_theme(),
+                theme=personalization_theme(),
                 queue_stats=health["queue"],
                 sync_health=health,
                 recent=recent,
@@ -292,7 +300,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
         set_setting("ui_home_poem", values["home_poem"])
         set_setting("ui_poem_pool", json.dumps(values["poem_pool"], ensure_ascii=False))
         with connect() as conn:
-            queue_event(conn, "personalization_updated", values)
+            queue_event(conn, "personalization_updated", personalization_theme())
             conn.commit()
         best_effort_sync()
         flash(request, "个性化方案已保存；新版本可直接导入。")
@@ -316,10 +324,10 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 item["tools"] = normalize_toolset(item.pop("toolset_json", "[]"), module)
                 workspaces.append(item)
         payload = {
-            "format": "research-cultivation-personalization-v6",
-            "schema_version": 6,
+            "format": "research-cultivation-personalization-v7",
+            "schema_version": 7,
             "exported_at": now_iso(),
-            "theme": _theme(),
+            "theme": personalization_theme(),
             "profile": {k: profile[k] for k in ("display_name", "title", "bio", "skills", "capabilities", "goals", "avatar_symbol")},
             "avatar_image": export_avatar_payload(),
             "workspaces": workspaces,
@@ -339,6 +347,7 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 "research-cultivation-personalization-v4",
                 "research-cultivation-personalization-v5",
                 "research-cultivation-personalization-v6",
+                "research-cultivation-personalization-v7",
             }:
                 raise ValueError("不是受支持的个性化包")
             theme = data.get("theme", {})
@@ -366,6 +375,11 @@ def register_online_routes(app, templates, context: Callable[..., dict[str, Any]
                 set_setting(
                     "nav_labels",
                     json.dumps(normalize_nav_labels(theme["nav_labels"]), ensure_ascii=False),
+                )
+            if isinstance(theme.get("nav_layout"), list):
+                set_setting(
+                    "nav_layout",
+                    json.dumps(normalize_nav_layout(theme["nav_layout"]), ensure_ascii=False),
                 )
             if str(theme.get("site_name", "")).strip():
                 set_setting("site_name", str(theme["site_name"]).strip()[:60])
