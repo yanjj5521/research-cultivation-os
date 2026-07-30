@@ -22,55 +22,29 @@
     </a>
 
     <nav class="side-nav" aria-label="主导航">
-      <div class="nav-group">
-        <span class="nav-label">{{ nav_labels.group_cultivation }}</span>
-        <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}"><b>⌂</b><span>{{ nav_labels.dashboard }}</span></a>
-        <a class="nav-item {% if active_page == 'cultivation' %}active{% endif %}" href="{{ url_for('cultivation_page') }}"><b>境</b><span>{{ nav_labels.cultivation }}</span></a>
-        <a class="nav-item {% if active_page == 'daily' %}active{% endif %}" href="{{ url_for('daily_page') }}"><b>始</b><span>{{ nav_labels.daily }}</span></a>
-        <a class="nav-item {% if active_page == 'review' %}active{% endif %}" href="{{ url_for('review_page') }}"><b>温</b><span>{{ nav_labels.review }}</span></a>
-        <a class="nav-item {% if active_page == 'plans' %}active{% endif %}" href="{{ url_for('plans_page') }}"><b>近</b><span>{{ nav_labels.plans }}</span></a>
-        <a class="nav-item {% if active_page == 'projects' %}active{% endif %}" href="{{ url_for('projects_page') }}"><b>题</b><span>{{ nav_labels.projects }}</span></a>
-        <a class="nav-item {% if active_page == 'retreat' %}active{% endif %}" href="{{ url_for('retreat_page') }}"><b>静</b><span>{{ nav_labels.retreat }}</span></a>
-      </div>
-
-      <div class="nav-group">
-        <span class="nav-label">{{ nav_labels.group_knowledge }}</span>
-        <a class="nav-item {% if active_page == 'library' %}active{% endif %}" href="{{ url_for('library') }}"><b>藏</b><span>{{ nav_labels.library }}</span></a>
-        <a class="nav-item {% if active_page == 'search' %}active{% endif %}" href="{{ url_for('search') }}"><b>寻</b><span>{{ nav_labels.search }}</span></a>
-        <a class="nav-item {% if active_page == 'note_new' %}active{% endif %}" href="{{ url_for('note_new') }}"><b>记</b><span>{{ nav_labels.note_new }}</span></a>
-        <a class="nav-item {% if active_page == 'upload' %}active{% endif %}" href="{{ url_for('upload') }}"><b>收</b><span>{{ nav_labels.upload }}</span></a>
-        <a class="nav-item {% if active_page == 'folders' %}active{% endif %}" href="{{ url_for('folders_page') }}"><b>夹</b><span>{{ nav_labels.folders }}</span></a>
-        <a class="nav-item {% if active_page == 'discover' %}active{% endif %}" href="{{ url_for('discover_page') }}"><b>网</b><span>{{ nav_labels.discover }}</span></a>
-      </div>
-
-      <div class="nav-group workspace-nav">
-        <span class="nav-label">{{ nav_labels.group_workspaces }}</span>
-        {% for workspace in nav_workspaces %}
-        <a class="nav-item workspace-nav-item {% if active_workspace_id|default(0) == workspace.id %}active{% endif %}" href="{{ url_for('workspace_open', workspace_id=workspace.id) }}"><b>{{ workspace.icon }}</b><span>{{ workspace.name }}</span></a>
+      {% for section in nav_sections %}
+      <div class="nav-group {% if section.key == 'workspaces' %}workspace-nav{% endif %}" data-nav-section="{{ section.key }}">
+        <span class="nav-label">{{ section.label }}</span>
+        {% for item in section["items"] %}
+          {% if item.kind|default('page') == 'workspace_shortcuts' %}
+            {% for workspace in nav_workspaces %}
+            <a class="nav-item workspace-nav-item {% if active_workspace_id|default(0) == workspace.id %}active{% endif %}" href="{{ url_for('workspace_open', workspace_id=workspace.id) }}"><b>{{ workspace.icon }}</b><span>{{ workspace.name }}</span></a>
+            {% endfor %}
+          {% else %}
+          <a class="nav-item {% if active_page == item.key %}active{% endif %}" href="{{ url_for(item.endpoint) }}" data-nav-item="{{ item.key }}">
+            <b>{{ item.icon }}</b><span>{{ item.label }}</span>
+            {% if item.key == 'trials' and nav_realm.tribulation_required %}<i class="tribulation-dot" title="已到突破关口">雷</i>{% endif %}
+            {% if item.key == 'online' and hub_configured %}<i class="online-dot" title="已配置轻量同行会"></i>{% endif %}
+          </a>
+          {% endif %}
         {% endfor %}
-        <a class="nav-item {% if active_page == 'workspaces' %}active{% endif %}" href="{{ url_for('workspaces_page') }}"><b>＋</b><span>{{ nav_labels.workspaces }}</span></a>
       </div>
-
-      <div class="nav-group">
-        <span class="nav-label">{{ nav_labels.group_growth }}</span>
-        <a class="nav-item {% if active_page == 'career' %}active{% endif %}" href="{{ url_for('career_page') }}"><b>程</b><span>{{ nav_labels.career }}</span></a>
-        <a class="nav-item {% if active_page == 'trials' %}active{% endif %}" href="{{ url_for('trials_page') }}"><b>境</b><span>{{ nav_labels.trials }}</span>{% if nav_realm.tribulation_required %}<i class="tribulation-dot" title="已到突破关口">雷</i>{% endif %}</a>
-        <a class="nav-item {% if active_page == 'alchemy' %}active{% endif %}" href="{{ url_for('alchemy_page') }}"><b>丹</b><span>{{ nav_labels.alchemy }}</span></a>
-        <a class="nav-item {% if active_page == 'world' %}active{% endif %}" href="{{ url_for('world_page') }}"><b>府</b><span>{{ nav_labels.world }}</span></a>
-        <a class="nav-item {% if active_page == 'profile' %}active{% endif %}" href="{{ url_for('profile_page') }}"><b>我</b><span>{{ nav_labels.profile }}</span></a>
-      </div>
-
-      <div class="nav-group">
-        <span class="nav-label">{{ nav_labels.group_system }}</span>
-        <a class="nav-item {% if active_page == 'assistant' %}active{% endif %}" href="{{ url_for('assistant_page') }}"><b>问</b><span>{{ nav_labels.assistant }}</span></a>
-        <a class="nav-item {% if active_page == 'online' %}active{% endif %}" href="{{ url_for('online_page') }}"><b>联</b><span>{{ nav_labels.online }}</span>{% if hub_configured %}<i class="online-dot" title="已配置轻量同行会"></i>{% endif %}</a>
-        <a class="nav-item {% if active_page == 'settings' %}active{% endif %}" href="{{ url_for('settings_page') }}"><b>设</b><span>{{ nav_labels.settings }}</span></a>
-      </div>
+      {% endfor %}
     </nav>
 
     <div class="sidebar-footer">
       <a href="{{ url_for('knowledge_export') }}">{{ nav_labels.knowledge_export }}</a>
-      <small><a href="{{ url_for('backup') }}">{{ nav_labels.backup }}</a> · 本地可迁移</small>
+      <small><a href="{{ url_for('backup') }}">{{ nav_labels.backup }}</a> · <a href="{{ url_for('settings_page') }}#navigation-layout">调整导航</a></small>
     </div>
   </aside>
   <button class="sidebar-scrim" id="sidebarScrim" type="button" aria-label="关闭菜单"></button>
