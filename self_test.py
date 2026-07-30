@@ -2,15 +2,32 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
+import tempfile
 import zipfile
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+# The test command must never inherit a researcher's development database merely
+# because it was launched from beside the source tree. Callers can still provide
+# an explicit disposable directory when they need to inspect the generated data.
+if not os.environ.get("RESEARCH_OS_DATA_DIR", "").strip():
+    os.environ["RESEARCH_OS_DATA_DIR"] = tempfile.mkdtemp(
+        prefix="research-os-self-test-"
+    )
+
 import app
-from db import connect, get_setting, now_iso, set_setting, total_xp
+from db import (
+    connect,
+    get_setting,
+    normalize_nav_layout,
+    now_iso,
+    set_setting,
+    total_xp,
+)
 from runtime_paths import USER_CONFIG_DIR
 from services.progression import (
     REALM_STAGES,
@@ -822,6 +839,30 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
 
     realm_names = "\n".join(["mortal=见习研究者", "body_early=证据学徒"])
     nav_labels = "\n".join(["dashboard=科研台", "alchemy=实验炼丹房", "group_workspaces=我的实验空间"])
+    nav_layout = app.navigation_layout()
+    nav_groups = {group["key"]: group for group in nav_layout}
+    nav_layout = [
+        nav_groups["system"],
+        nav_groups["cultivation"],
+        nav_groups["knowledge"],
+        nav_groups["workspaces"],
+        nav_groups["growth"],
+    ]
+    cultivation_items = {
+        item["key"]: item for item in nav_groups["cultivation"]["items"]
+    }
+    nav_groups["cultivation"]["items"] = [
+        cultivation_items["daily"],
+        cultivation_items["dashboard"],
+        *[
+            item
+            for item in nav_groups["cultivation"]["items"]
+            if item["key"] not in {"daily", "dashboard"}
+        ],
+    ]
+    for item in nav_groups["system"]["items"]:
+        if item["key"] in {"assistant", "settings"}:
+            item["visible"] = False
     _check_response(
         failures,
         "personalization settings",
@@ -836,6 +877,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
                 "ai_model": "qwen2.5:7b",
                 "realm_names": realm_names,
                 "nav_labels": nav_labels,
+                "nav_layout": json.dumps(nav_layout, ensure_ascii=False),
                 "review_popup": "1",
                 "poem_pool": "问渠那得清如许？为有源头活水来。——朱熹\n纸上得来终觉浅，绝知此事要躬行。——陆游",
             },
@@ -846,6 +888,20 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     saved_nav = json.loads(get_setting("nav_labels", "{}"))
     if saved_nav.get("dashboard") != "科研台" or saved_nav.get("alchemy") != "实验炼丹房":
         failures.append("navigation personalization was not saved")
+    saved_layout = json.loads(get_setting("nav_layout", "[]"))
+    if (
+        not saved_layout
+        or saved_layout[0].get("key") != "system"
+        or saved_layout[1].get("items", [{}])[0].get("key") != "daily"
+    ):
+        failures.append("navigation order was not saved")
+    rendered_custom_nav = client.get("/daily").text
+    if rendered_custom_nav.find('data-nav-section="system"') > rendered_custom_nav.find('data-nav-section="cultivation"'):
+        failures.append("custom navigation group order was not rendered")
+    if 'data-nav-item="assistant"' in rendered_custom_nav or 'data-nav-item="settings"' in rendered_custom_nav:
+        failures.append("hidden navigation items were still rendered in the sidebar")
+    if "调整导航" not in rendered_custom_nav:
+        failures.append("navigation recovery link disappeared after hiding settings")
 
     avatar_buffer = io.BytesIO()
     Image.new("RGB", (96, 96), "#8b654d").save(avatar_buffer, format="PNG")
@@ -873,12 +929,15 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError):
         package = {}
         failures.append("personalization export was not valid JSON")
-    if package.get("format") != "research-cultivation-personalization-v6":
-        failures.append("personalization export did not use the v6 format")
+    if package.get("format") != "research-cultivation-personalization-v7":
+        failures.append("personalization export did not use the v7 format")
     if len(package.get("theme", {}).get("realm_names", {})) != 39:
         failures.append("personalization export did not include the full realm map")
     if not package.get("workspaces"):
         failures.append("personalization export did not include workspace definitions")
+    exported_layout = package.get("theme", {}).get("nav_layout", [])
+    if not exported_layout or exported_layout[0].get("key") != "system":
+        failures.append("personalization export did not include navigation layout")
     exported_ml = next(
         (
             workspace
@@ -980,7 +1039,7 @@ def _run_integration(client: TestClient, failures: list[str]) -> None:
             "/online/personalization/import",
             files={
                 "file": (
-                    "personalization-v6.json",
+                    "personalization-v7.json",
                     json.dumps(package, ensure_ascii=False).encode("utf-8"),
                     "application/json",
                 )
@@ -1081,6 +1140,45 @@ def main() -> None:
         failures.append("navigation categories were not ordered by expected frequency")
     if "nav-more" in daily_navigation.text:
         failures.append("desktop navigation still rendered a collapsed tools section")
+    settings_navigation = client.get("/settings")
+    for marker in (
+        'data-nav-layout-editor',
+        'data-nav-reset',
+        'data-nav-item-key="workspace_shortcuts"',
+        "调整导航",
+    ):
+        if marker not in settings_navigation.text:
+            failures.append(f"navigation editor missed: {marker}")
+    normalized_layout = normalize_nav_layout(
+        [
+            {
+                "key": "system",
+                "items": [
+                    {"key": "assistant", "visible": False},
+                    {"key": "assistant", "visible": True},
+                    {"key": "unknown", "visible": True},
+                ],
+            },
+            {"key": "unknown", "items": []},
+        ]
+    )
+    if (
+        normalized_layout[0]["key"] != "system"
+        or normalized_layout[0]["items"][0] != {
+            "key": "assistant",
+            "visible": False,
+        }
+        or len(
+            [
+                item
+                for group in normalized_layout
+                for item in group["items"]
+                if item["key"] == "assistant"
+            ]
+        )
+        != 1
+    ):
+        failures.append("navigation layout normalization did not reject duplicates or unknown keys")
     capabilities = client.get("/api/sync/capabilities")
     _check_response(failures, "sync capability interface", capabilities)
     if capabilities.status_code == 200:
