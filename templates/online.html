@@ -126,8 +126,8 @@
   </form>
 
   <section class="panel">
-    <div class="panel-head simple"><div><span class="eyebrow">Portable v6</span><h2>个性化包</h2></div></div>
-    <p>v6 包含个人主页、头像、主题、每日诗句池、39阶境界名、全部导航名、复盘开关，以及工作区名称、首页固定、目标、色调、流程与组件；不包含论文、数据、密钥或 Token，并兼容 v1–v5。</p>
+    <div class="panel-head simple"><div><span class="eyebrow">Portable v7</span><h2>个性化包</h2></div></div>
+    <p>v7 包含个人主页、头像、主题、每日诗句池、39阶境界名、导航名称、顺序与显示状态、复盘开关，以及工作区名称、首页固定、目标、色调、流程与组件；不包含论文、数据、密钥或 Token，并兼容 v1–v6。</p>
     <a class="soft-button" href="{{ url_for('online_personalization_export') }}">导出 JSON 个性化包</a>
     <form method="post" action="{{ url_for('online_personalization_import') }}" enctype="multipart/form-data" class="clean-form import-pack">
       <label><span>导入个性化包</span><input type="file" name="file" accept=".json" required></label>
