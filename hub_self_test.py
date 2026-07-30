@@ -32,6 +32,25 @@ def main() -> None:
     register_page = client.get("/register")
     if register_page.status_code == 200 and "wendao://connect?hub=" not in register_page.text:
         failures.append("ResearchHub did not expose the Android one-tap pairing link")
+    parsed_theme = hub_app.parse_theme(
+        {
+            "nav_layout": [
+                {
+                    "key": "system",
+                    "items": [
+                        {"key": "online", "visible": True},
+                        {"key": "assistant", "visible": False},
+                        {"key": "settings", "visible": True},
+                    ],
+                }
+            ]
+        }
+    )
+    if (
+        parsed_theme.get("nav_layout", [{}])[0].get("key") != "system"
+        or parsed_theme["nav_layout"][0]["items"][1].get("visible") is not False
+    ):
+        failures.append("hub did not normalize synchronized navigation layout")
     with connect_hub() as conn:
         required = {
             "hub_users", "hub_profiles", "hub_asset_transactions", "hub_inventory",
