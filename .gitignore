@@ -12,17 +12,8 @@ __pycache__/
 instance/*
 !instance/.gitkeep
 storage/*
-!storage/uploads/
-!storage/backups/
-!storage/deliveries/
-!storage/game_assets/
-!storage/hub_backups/
-!storage/hub_releases/
-!storage/note_images/
-!storage/profile/
-!storage/research_foundation/
-!storage/simulations/
-!storage/sync_exports/
+!storage/*/
+storage/*/*
 !storage/*/.gitkeep
 
 # Databases and user data
