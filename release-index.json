@@ -1,0 +1,31 @@
+{
+  "product": "科研系统",
+  "channel": "formal",
+  "display_version": "正式版 1.0",
+  "technical_version": "1.0.0",
+  "tag": "formal-v1.0.0",
+  "source_visibility": "private",
+  "artifacts": [
+    {
+      "name": "ResearchSystem-Formal-v1.0.0-Windows-x64.exe",
+      "sha256": "67aa8716379ecbc4ea784708e6a93540da7aad66c9570e611833a9abc3d98598"
+    },
+    {
+      "name": "ResearchSystem-Formal-v1.0.0-Portable.zip",
+      "sha256": "2f7538f61f5e78389f070e2f85d31a3345514e5f8ef01e929d45588083058b94"
+    },
+    {
+      "name": "ResearchSystem-Mobile-Formal-v1.0.0-Android.apk",
+      "sha256": "f8e5afaf50db01121e8a028a7957d448670313f901a58dda1bf124af1e96cada"
+    },
+    {
+      "name": "SHA256SUMS.txt"
+    }
+  ],
+  "android_certificate_sha256": "FD:E5:51:0F:55:46:E2:ED:5B:3A:F7:1F:56:2E:1E:D1:4D:FE:CA:E9:59:61:72:C1:82:B7:E5:DF:A5:03:4C:87",
+  "test_line": {
+    "versions": "v2.1.0-v3.0.0",
+    "branches_preserved": true,
+    "database_compatible": false
+  }
+}
