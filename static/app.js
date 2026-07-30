@@ -38,6 +38,169 @@
     });
   }
 
+  const navLayoutEditor = document.querySelector('[data-nav-layout-editor]');
+  if (navLayoutEditor) {
+    const groupsRoot = navLayoutEditor.querySelector('.nav-layout-groups');
+    const layoutInput = document.getElementById('navLayoutInput');
+    const layoutStatus = document.getElementById('navLayoutStatus');
+    const settingsForm = navLayoutEditor.closest('form');
+    let draggedGroup = null;
+    let draggedItem = null;
+
+    const groupElements = () => [...groupsRoot.querySelectorAll(':scope > [data-nav-group]')];
+    const itemElements = group => [...group.querySelectorAll(':scope > [data-nav-items] > [data-nav-item-key]')];
+    const updateGroupCounts = () => {
+      groupElements().forEach(group => {
+        const countLabel = group.querySelector(':scope > header > span:not(.nav-order-buttons)');
+        if (!countLabel) return;
+        const items = itemElements(group);
+        const visible = items.filter(item => item.querySelector('[data-nav-visible]')?.checked).length;
+        countLabel.textContent = `${visible}/${items.length} 显示`;
+      });
+    };
+    const serializeLayout = (dirty = true) => {
+      if (!layoutInput) return;
+      const layout = groupElements().map(group => ({
+        key: group.dataset.navGroup,
+        items: itemElements(group).map(item => ({
+          key: item.dataset.navItemKey,
+          visible: Boolean(item.querySelector('[data-nav-visible]')?.checked),
+        })),
+      }));
+      layoutInput.value = JSON.stringify(layout);
+      updateGroupCounts();
+      if (dirty && layoutStatus) {
+        layoutStatus.textContent = '布局已调整；点击下方“保存设置”后应用到侧栏。';
+        layoutStatus.classList.add('is-dirty');
+      }
+    };
+    const setDraggedState = (element, active) => {
+      element?.classList.toggle('is-dragging', active);
+    };
+    const finishDrag = () => {
+      setDraggedState(draggedGroup, false);
+      setDraggedState(draggedItem, false);
+      draggedGroup = null;
+      draggedItem = null;
+      groupElements().forEach(group => {
+        group.draggable = false;
+        itemElements(group).forEach(item => { item.draggable = false; });
+      });
+      serializeLayout();
+    };
+    const insertByPointer = (root, dragged, target, pointerY) => {
+      if (!target || target === dragged) return;
+      const rect = target.getBoundingClientRect();
+      root.insertBefore(dragged, pointerY < rect.top + rect.height / 2 ? target : target.nextSibling);
+    };
+
+    groupElements().forEach(group => {
+      group.draggable = false;
+      const groupHandle = group.querySelector(':scope > header [data-nav-drag-group]');
+      groupHandle?.addEventListener('pointerdown', () => {
+        group.draggable = true;
+      });
+      group.addEventListener('dragstart', event => {
+        if (event.target !== group || !group.draggable) return;
+        draggedGroup = group;
+        setDraggedState(group, true);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', group.dataset.navGroup || 'nav-group');
+      });
+      group.addEventListener('dragend', finishDrag);
+
+      itemElements(group).forEach(item => {
+        item.draggable = false;
+        const itemHandle = item.querySelector('[data-nav-drag-item]');
+        itemHandle?.addEventListener('pointerdown', () => {
+          group.draggable = false;
+          item.draggable = true;
+        });
+        item.addEventListener('dragstart', event => {
+          if (event.target !== item || !item.draggable) return;
+          event.stopPropagation();
+          draggedItem = item;
+          setDraggedState(item, true);
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', item.dataset.navItemKey || 'nav-item');
+        });
+        item.addEventListener('dragend', event => {
+          event.stopPropagation();
+          finishDrag();
+        });
+      });
+    });
+
+    groupsRoot?.addEventListener('dragover', event => {
+      if (draggedItem) {
+        const list = event.target.closest('[data-nav-items]');
+        if (!list || list !== draggedItem.parentElement) return;
+        event.preventDefault();
+        insertByPointer(list, draggedItem, event.target.closest('[data-nav-item-key]'), event.clientY);
+        return;
+      }
+      if (draggedGroup) {
+        event.preventDefault();
+        insertByPointer(groupsRoot, draggedGroup, event.target.closest('[data-nav-group]'), event.clientY);
+      }
+    });
+    groupsRoot?.addEventListener('drop', event => {
+      if (!draggedGroup && !draggedItem) return;
+      event.preventDefault();
+      finishDrag();
+    });
+    window.addEventListener('pointerup', () => {
+      if (draggedGroup || draggedItem) return;
+      groupElements().forEach(group => {
+        group.draggable = false;
+        itemElements(group).forEach(item => { item.draggable = false; });
+      });
+    });
+
+    navLayoutEditor.addEventListener('click', event => {
+      const moveButton = event.target.closest('[data-nav-move]');
+      if (!moveButton) return;
+      const action = moveButton.dataset.navMove;
+      const item = moveButton.closest('[data-nav-item-key]');
+      const group = moveButton.closest('[data-nav-group]');
+      if (action === 'item-up' && item?.previousElementSibling) {
+        item.parentElement.insertBefore(item, item.previousElementSibling);
+      } else if (action === 'item-down' && item?.nextElementSibling) {
+        item.parentElement.insertBefore(item.nextElementSibling, item);
+      } else if (action === 'group-up' && group?.previousElementSibling) {
+        groupsRoot.insertBefore(group, group.previousElementSibling);
+      } else if (action === 'group-down' && group?.nextElementSibling) {
+        groupsRoot.insertBefore(group.nextElementSibling, group);
+      }
+      serializeLayout();
+    });
+    navLayoutEditor.addEventListener('change', event => {
+      const checkbox = event.target.closest('[data-nav-visible]');
+      if (!checkbox) return;
+      checkbox.closest('[data-nav-item-key]')?.classList.toggle('is-hidden', !checkbox.checked);
+      serializeLayout();
+    });
+    navLayoutEditor.querySelector('[data-nav-reset]')?.addEventListener('click', () => {
+      groupElements()
+        .sort((a, b) => Number(a.dataset.defaultOrder) - Number(b.dataset.defaultOrder))
+        .forEach(group => {
+          groupsRoot.appendChild(group);
+          itemElements(group)
+            .sort((a, b) => Number(a.dataset.defaultOrder) - Number(b.dataset.defaultOrder))
+            .forEach(item => {
+              group.querySelector('[data-nav-items]').appendChild(item);
+              const checkbox = item.querySelector('[data-nav-visible]');
+              if (checkbox) checkbox.checked = true;
+              item.classList.remove('is-hidden');
+            });
+        });
+      serializeLayout();
+      if (layoutStatus) layoutStatus.textContent = '已恢复默认布局；点击“保存设置”后生效。';
+    });
+    settingsForm?.addEventListener('submit', () => serializeLayout(false));
+    serializeLayout(false);
+  }
+
   const input = document.getElementById('fileInput');
   const zone = document.getElementById('dropzone');
   const list = document.getElementById('fileList');
