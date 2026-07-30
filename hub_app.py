@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from db import normalize_nav_labels
+from db import normalize_nav_labels, normalize_nav_layout
 from hub_db import (
     HUB_ADMIN_PATH,
     HUB_BACKUP_DIR,
@@ -218,6 +218,7 @@ def parse_theme(value: str | dict[str, Any]) -> dict[str, Any]:
     result["realm_names"] = normalize_realm_labels(data.get("realm_names", {}))
     nav_labels = data.get("nav_labels", {})
     result["nav_labels"] = normalize_nav_labels(nav_labels)
+    result["nav_layout"] = normalize_nav_layout(data.get("nav_layout", []))
     for key, values in allowed.items():
         if result[key] not in values:
             result[key] = next(iter(values))
