@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -170,8 +171,42 @@ def main() -> None:
             ).fetchone()
             assert workspace["name"] == "旧版材料模拟空间"
             assert workspace["objective"] == "保留旧工作区个性化"
+            nav_layout = db.normalize_nav_layout(
+                json.loads(db.get_setting("nav_layout", "[]"))
+            )
+            assert len(nav_layout) == 5
+            assert nav_layout[0]["key"] == "cultivation"
+            assert any(
+                item["key"] == "workspace_shortcuts"
+                for group in nav_layout
+                for item in group["items"]
+            )
 
         assert upload.read_bytes() == b"v2.2 research evidence must survive an in-place upgrade\n"
+
+        custom_layout = db.normalize_nav_layout(
+            [
+                {
+                    "key": "system",
+                    "items": [
+                        {"key": "online", "visible": True},
+                        {"key": "assistant", "visible": False},
+                        {"key": "settings", "visible": False},
+                    ],
+                }
+            ]
+        )
+        db.set_setting(
+            "nav_layout",
+            json.dumps(custom_layout, ensure_ascii=False),
+        )
+        db.init_db()
+        preserved_layout = json.loads(db.get_setting("nav_layout", "[]"))
+        assert preserved_layout[0]["key"] == "system"
+        assert {
+            item["key"]: item["visible"]
+            for item in preserved_layout[0]["items"]
+        }["assistant"] is False
 
         with db.connect() as conn:
             conn.execute(
