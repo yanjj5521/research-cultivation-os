@@ -9,7 +9,14 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-from db import connect, get_setting, normalize_nav_labels, now_iso, set_setting
+from db import (
+    connect,
+    get_setting,
+    normalize_nav_labels,
+    normalize_nav_layout,
+    now_iso,
+    set_setting,
+)
 from services.economy import balances as local_balances
 from services.game_world import ARTIFACTS, BUILDINGS
 from services.progression import normalize_realm_labels
@@ -348,6 +355,11 @@ def apply_state(conn, state: dict[str, Any]) -> None:
         conn.execute(
             "INSERT INTO settings(key,value) VALUES ('nav_labels',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (json.dumps(normalize_nav_labels(theme["nav_labels"]), ensure_ascii=False),),
+        )
+    if isinstance(theme.get("nav_layout"), list):
+        conn.execute(
+            "INSERT INTO settings(key,value) VALUES ('nav_layout',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (json.dumps(normalize_nav_layout(theme["nav_layout"]), ensure_ascii=False),),
         )
     _cache(conn, "hub_state", state)
     if state.get("latest_release") is not None:
