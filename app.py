@@ -28,11 +28,13 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from db import (
     DB_PATH,
+    DEFAULT_NAV_LAYOUT,
     DEFAULT_NAV_LABELS,
     connect,
     get_setting,
     init_db,
     log_activity,
+    normalize_nav_layout,
     normalize_nav_labels,
     now_iso,
     set_setting,
@@ -90,6 +92,44 @@ KINDS = {
     "failure": ("失败复盘", "🔥"),
     "idea": ("灵感假设", "💡"),
     "other": ("其他", "📦"),
+}
+
+NAV_GROUP_LABEL_KEYS = {
+    "cultivation": "group_cultivation",
+    "knowledge": "group_knowledge",
+    "workspaces": "group_workspaces",
+    "growth": "group_growth",
+    "system": "group_system",
+}
+
+NAV_ITEM_DEFINITIONS = {
+    "dashboard": {"endpoint": "dashboard", "icon": "⌂"},
+    "cultivation": {"endpoint": "cultivation_page", "icon": "境"},
+    "daily": {"endpoint": "daily_page", "icon": "始"},
+    "review": {"endpoint": "review_page", "icon": "温"},
+    "plans": {"endpoint": "plans_page", "icon": "近"},
+    "projects": {"endpoint": "projects_page", "icon": "题"},
+    "retreat": {"endpoint": "retreat_page", "icon": "静"},
+    "library": {"endpoint": "library", "icon": "藏"},
+    "search": {"endpoint": "search", "icon": "寻"},
+    "note_new": {"endpoint": "note_new", "icon": "记"},
+    "upload": {"endpoint": "upload", "icon": "收"},
+    "folders": {"endpoint": "folders_page", "icon": "夹"},
+    "discover": {"endpoint": "discover_page", "icon": "网"},
+    "workspace_shortcuts": {
+        "kind": "workspace_shortcuts",
+        "icon": "域",
+        "editor_label": "启用的工作区入口（整体）",
+    },
+    "workspaces": {"endpoint": "workspaces_page", "icon": "＋"},
+    "career": {"endpoint": "career_page", "icon": "程"},
+    "trials": {"endpoint": "trials_page", "icon": "境"},
+    "alchemy": {"endpoint": "alchemy_page", "icon": "丹"},
+    "world": {"endpoint": "world_page", "icon": "府"},
+    "profile": {"endpoint": "profile_page", "icon": "我"},
+    "assistant": {"endpoint": "assistant_page", "icon": "问"},
+    "online": {"endpoint": "online_page", "icon": "联"},
+    "settings": {"endpoint": "settings_page", "icon": "设"},
 }
 
 
@@ -240,6 +280,82 @@ def navigation_labels() -> dict[str, str]:
     return normalize_nav_labels(custom)
 
 
+def navigation_layout() -> list[dict[str, Any]]:
+    try:
+        custom = json.loads(get_setting("nav_layout", "[]"))
+    except json.JSONDecodeError:
+        custom = []
+    return normalize_nav_layout(custom)
+
+
+def navigation_sections(
+    labels: dict[str, str],
+    workspaces: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    for group in navigation_layout():
+        items: list[dict[str, Any]] = []
+        for saved_item in group["items"]:
+            if not saved_item["visible"]:
+                continue
+            key = saved_item["key"]
+            definition = NAV_ITEM_DEFINITIONS[key]
+            if key == "workspace_shortcuts" and not workspaces:
+                continue
+            item = {"key": key, **definition}
+            if key != "workspace_shortcuts":
+                item["label"] = labels[key]
+            items.append(item)
+        if items:
+            sections.append(
+                {
+                    "key": group["key"],
+                    "label": labels[NAV_GROUP_LABEL_KEYS[group["key"]]],
+                    "items": items,
+                }
+            )
+    return sections
+
+
+def navigation_editor_layout() -> list[dict[str, Any]]:
+    labels = navigation_labels()
+    default_group_order = {
+        group["key"]: index for index, group in enumerate(DEFAULT_NAV_LAYOUT)
+    }
+    default_item_order = {
+        group["key"]: {
+            item["key"]: index for index, item in enumerate(group["items"])
+        }
+        for group in DEFAULT_NAV_LAYOUT
+    }
+    editor: list[dict[str, Any]] = []
+    for group in navigation_layout():
+        group_key = group["key"]
+        items = []
+        for item in group["items"]:
+            definition = NAV_ITEM_DEFINITIONS[item["key"]]
+            items.append(
+                {
+                    **item,
+                    "icon": definition["icon"],
+                    "label": definition.get(
+                        "editor_label",
+                        labels.get(item["key"], item["key"]),
+                    ),
+                    "default_order": default_item_order[group_key][item["key"]],
+                }
+            )
+        editor.append(
+            {
+                "key": group_key,
+                "label": labels[NAV_GROUP_LABEL_KEYS[group_key]],
+                "items": items,
+                "default_order": default_group_order[group_key],
+            }
+        )
+    return editor
+
+
 def infer_kind(filename: str, selected: str) -> str:
     if selected and selected != "auto":
         return selected
@@ -361,6 +477,7 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
                 "SELECT id,name,icon,module,accent FROM workspaces WHERE active=1 ORDER BY sort_order,id"
             )
         ]
+    _nav_labels = navigation_labels()
     base = {
         "request": request,
         "site_name": get_setting("site_name", "问道科研"),
@@ -379,7 +496,8 @@ def context(request: Request, active_page: str, **extra: Any) -> dict[str, Any]:
         "ui_home_motto": get_setting("ui_home_motto", "让科研更好玩一点"),
         "ui_home_poem": daily_poem(),
         "day_phase": current_day_phase(),
-        "nav_labels": navigation_labels(),
+        "nav_labels": _nav_labels,
+        "nav_sections": navigation_sections(_nav_labels, _workspaces),
         "nav_workspaces": _workspaces,
         "nav_avatar_symbol": (_profile["avatar_symbol"] if _profile else "道") or "道",
         "avatar_file": current_avatar_filename(),
@@ -1133,6 +1251,8 @@ def settings_get(request: Request):
                 f"{stage.key}={realm_labels[stage.key]}" for stage in REALM_STAGES
             ),
             nav_labels_text="\n".join(f"{key}={value}" for key, value in navigation_labels().items()),
+            nav_layout_editor=navigation_editor_layout(),
+            nav_layout_json=json.dumps(navigation_layout(), ensure_ascii=False),
             review_popup=get_setting("review_popup", "1") == "1",
             poem_pool_text="\n".join(configured_poem_pool()),
             portable_version=get_setting("portable_version", APP_VERSION),
@@ -1151,6 +1271,7 @@ def settings_post(
     ai_model: str = Form("qwen2.5:7b"),
     realm_names: str = Form(""),
     nav_labels: str = Form(""),
+    nav_layout: str = Form(""),
     review_popup: str = Form(""),
     poem_pool: str = Form(""),
     home_poem: str = Form(""),
@@ -1184,6 +1305,15 @@ def settings_post(
         if key in parsed_nav and value:
             parsed_nav[key] = value[:24]
     set_setting("nav_labels", json.dumps(parsed_nav, ensure_ascii=False))
+    try:
+        parsed_nav_layout = json.loads(nav_layout)
+    except json.JSONDecodeError:
+        parsed_nav_layout = navigation_layout()
+        flash(request, "导航布局格式异常，已保留原来的顺序与显示状态。", "error")
+    set_setting(
+        "nav_layout",
+        json.dumps(normalize_nav_layout(parsed_nav_layout), ensure_ascii=False),
+    )
     set_setting("review_popup", "1" if review_popup == "1" else "0")
     custom_poems = [
         line.strip()[:120]
@@ -1194,6 +1324,13 @@ def settings_post(
         custom_poems = [home_poem.strip()[:120]]
     set_setting("ui_poem_pool", json.dumps(custom_poems, ensure_ascii=False))
     set_setting("ui_home_poem", custom_poems[0] if custom_poems else DEFAULT_POEMS[0])
+    from features.online_sync import personalization_theme
+    from services.online_sync import best_effort_sync, queue_event
+
+    with connect() as conn:
+        queue_event(conn, "personalization_updated", personalization_theme())
+        conn.commit()
+    best_effort_sync()
     flash(request, "设置已保存。")
     return redirect("settings_page", request)
 
