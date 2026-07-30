@@ -22,13 +22,30 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: immutable-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  release-start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark release as building
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=public-release-gate \
+            -f description="Building Windows EXEs and Android APK" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
   windows-release:
+    needs: release-start
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -108,6 +125,7 @@ jobs:
           retention-days: 14
 
   android-release:
+    needs: release-start
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -235,3 +253,32 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "问道科研 v${APP_VERSION}" \
             --notes-file "docs/releases/v${APP_VERSION}.md"
+
+  release-result:
+    if: always()
+    needs: [windows-release, android-release, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish combined release result
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINDOWS_RESULT: ${{ needs.windows-release.result }}
+          ANDROID_RESULT: ${{ needs.android-release.result }}
+          PUBLISH_RESULT: ${{ needs.publish-release.result }}
+        run: |
+          state=failure
+          description="Release failed; inspect Windows, Android or publish job"
+          if [[ "$WINDOWS_RESULT" == "success" \
+             && "$ANDROID_RESULT" == "success" \
+             && "$PUBLISH_RESULT" == "success" ]]; then
+            state=success
+            description="Windows, Android and immutable release passed"
+          fi
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context=public-release-gate \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          [[ "$state" == "success" ]]
