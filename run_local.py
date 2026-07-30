@@ -79,7 +79,8 @@ if __name__ == "__main__":
         print(f"Data migrated from: {source.resolve()}")
         print(f"Data directory: {DATA_ROOT}")
         raise SystemExit(0)
-    migrate_adjacent_legacy_data()
+    if not args.self_check:
+        migrate_adjacent_legacy_data()
     if args.open_data:
         try:
             os.startfile(DATA_ROOT)  # type: ignore[attr-defined]
@@ -112,6 +113,15 @@ if __name__ == "__main__":
             homepage = client.get("/").text
             if "gate-dual-search" not in homepage or "data-living-scene" not in homepage:
                 raise SystemExit("Packaged self-check failed: the homepage template is incomplete.")
+            settings_page = client.get("/settings").text
+            if (
+                "data-nav-layout-editor" not in settings_page
+                or "data-nav-reset" not in settings_page
+                or "调整导航" not in settings_page
+            ):
+                raise SystemExit(
+                    "Packaged self-check failed: the navigation editor is incomplete."
+                )
             world = client.get("/world")
             if world.status_code != 200 or "购入 · 12 灵石" not in world.text:
                 raise SystemExit("Packaged self-check failed: the starter artifact is not affordable.")
