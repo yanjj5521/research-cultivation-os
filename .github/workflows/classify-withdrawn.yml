@@ -1,0 +1,27 @@
+name: Classify withdrawn formal candidates
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  classify:
+    if: "github.event.head_commit.message == 'release: classify withdrawn formal candidates'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark superseded minimal candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit formal-v1.0.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "科研系统 精简重构候选 1.0.0（已撤回）" \
+            --prerelease
+          gh release edit formal-v1.0.1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "科研系统 精简重构候选 1.0.1（已撤回）" \
+            --prerelease
