@@ -1,31 +1,31 @@
 {
   "product": "问道科研",
   "channel": "formal",
-  "display_version": "问道科研 · 正式版 1.0",
-  "technical_version": "1.0.0",
-  "tag": "wendao-formal-v1.0.0",
+  "display_version": "问道科研 v3.0.1 · 3.0体验正式版",
+  "technical_version": "3.0.1",
+  "tag": "wendao-v3.0.1",
   "source_visibility": "private",
   "database": {
-    "file": "wendao-research.db",
-    "schema": 2,
+    "file": "wendao-v3-clean.db",
+    "schema": 1,
     "compatible_with_previous_products": false
   },
   "artifacts": [
     {
-      "name": "WendaoResearch-Formal-v1.0.0-Windows-x64.exe",
-      "sha256": "c753b9b8e335ae91009a77b9ef7206a3976d06f2b81d4c282b159d43d2039187"
+      "name": "WendaoResearch-v3.0.1-Windows-x64.exe",
+      "sha256": "d457443af982c0674b210d10565ea7bfecd0602b4b7f01a92d1a41afc638a6cd"
     },
     {
-      "name": "WendaoResearch-Formal-v1.0.0-Portable.zip",
-      "sha256": "c081872740e607662926cd0937c2797189a279a8376f12d53e28881f8b0276e4"
+      "name": "WendaoResearch-v3.0.1-Portable.zip",
+      "sha256": "a8184a209e4e91feff5ae79bf2a1c5c25584e0218f29d0eec825702ac8cfaac3"
     },
     {
-      "name": "WendaoResearch-Mobile-Formal-v1.0.0-Android.apk",
-      "sha256": "1e44deae4a30dd9a8250c7b8916de8147f3794f25e5254e8605ca4547990dbbc"
+      "name": "WendaoResearch-Mobile-v3.0.1-Android.apk",
+      "sha256": "f63b37307c891cf89c126f0e8421d4db9915392f0c64517c0b8a2fae0702b396"
     },
     {
-      "name": "SHA256SUMS.txt"
+      "name": "SHA256SUMS.txt",
+      "sha256": "8cfec31e92c42435637ed11a697af6d748527479641e68e2c885ad597bd44194"
     }
-  ],
-  "android_certificate_sha256": "FD:E5:51:0F:55:46:E2:ED:5B:3A:F7:1F:56:2E:1E:D1:4D:FE:CA:E9:59:61:72:C1:82:B7:E5:DF:A5:03:4C:87"
+  ]
 }
