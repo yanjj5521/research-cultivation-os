@@ -1,0 +1,31 @@
+{
+  "version": "1.0.1",
+  "source_commit": "5f75e60a1cdbd121dd2883cc9a053f5a150e277a",
+  "source_run": 30687490640,
+  "archives": [
+    {
+      "name": "formal-windows-1.0.1.zip",
+      "url": "https://sdmntprwestcentralus.oaiusercontent.com/files/00000000-a20c-81fb-8885-3fa1a79ca34b/raw?se=2026-08-01T06:30:09Z&sp=r&sv=2026-02-06&sr=b&scid=2f939372-bbf0-4d84-adc1-20ec55e89241&skoid=80e81ea6-3c08-46f9-bd84-b87176742bcd&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-08-01T01:16:36Z&ske=2026-08-02T01:16:36Z&sks=b&skv=2026-02-06&sig=Lj3TByEZJY4ypm1GgOaA0EDzZI6qt5lfCEczsC0Ae9E%3D",
+      "sha256": "22df7ff98507e95dbab6e37dbd77712c7e4e2e4fc03df5a85fdeda73a78b259e"
+    },
+    {
+      "name": "formal-android-1.0.1.zip",
+      "url": "https://sdmntprwestcentralus.oaiusercontent.com/files/00000000-075c-81fb-8114-c9d96a5179d1/raw?se=2026-08-01T06:30:10Z&sp=r&sv=2026-02-06&sr=b&scid=6cd47358-14c6-4ad2-a01e-7d41c7982f10&skoid=80e81ea6-3c08-46f9-bd84-b87176742bcd&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-08-01T01:13:10Z&ske=2026-08-02T01:13:10Z&sks=b&skv=2026-02-06&sig=KUg2Nqe6DRPR%2BIzz16uIv29oE7ZGloBTaar5m2SoGJk%3D",
+      "sha256": "8c0ba4aaf81e6cf847b1098239b72b3ffe06d2ee8ddc2c8622ac3293ac39c841"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "ResearchSystem-Formal-v1.0.1-Windows-x64.exe",
+      "sha256": "6a3054528a50859862747d5615bff9e986803f4cc37f6a4d9be29200b1975487"
+    },
+    {
+      "name": "ResearchSystem-Formal-v1.0.1-Portable.zip",
+      "sha256": "c57d77b338934a287058b6b758c6bf581636ab05b8445d73870bbbf83ef1db48"
+    },
+    {
+      "name": "ResearchSystem-Mobile-Formal-v1.0.1-Android.apk",
+      "sha256": "beacb49d852e19dad2f5dbad8ceeddfe1e65b183ed1cd2c6bd9ce0b42291af77"
+    }
+  ]
+}
