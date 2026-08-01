@@ -10,6 +10,7 @@
 - [Windows 便携包](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/WendaoResearch-v3.1.0-Portable.zip)
 - [Android 安装包](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/WendaoResearch-Mobile-v3.1.0-Android.apk)
 - [SHA-256 校验文件](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/SHA256SUMS.txt)
+- [完整使用手册](docs/使用手册.md)
 
 Windows 只有一个 `WendaoResearchV3.exe`：双击进入个人端；需要团队中心时，使用便携包内的 `启动团队中心.cmd`，或执行 `WendaoResearchV3.exe --mode team`。
 
