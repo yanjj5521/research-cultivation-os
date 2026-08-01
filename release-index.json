@@ -2,21 +2,21 @@
   "product": "科研系统",
   "channel": "formal",
   "display_version": "正式版 1.0",
-  "technical_version": "1.0.0",
-  "tag": "formal-v1.0.0",
+  "technical_version": "1.0.1",
+  "tag": "formal-v1.0.1",
   "source_visibility": "private",
   "artifacts": [
     {
-      "name": "ResearchSystem-Formal-v1.0.0-Windows-x64.exe",
-      "sha256": "67aa8716379ecbc4ea784708e6a93540da7aad66c9570e611833a9abc3d98598"
+      "name": "ResearchSystem-Formal-v1.0.1-Windows-x64.exe",
+      "sha256": "6a3054528a50859862747d5615bff9e986803f4cc37f6a4d9be29200b1975487"
     },
     {
-      "name": "ResearchSystem-Formal-v1.0.0-Portable.zip",
-      "sha256": "2f7538f61f5e78389f070e2f85d31a3345514e5f8ef01e929d45588083058b94"
+      "name": "ResearchSystem-Formal-v1.0.1-Portable.zip",
+      "sha256": "c57d77b338934a287058b6b758c6bf581636ab05b8445d73870bbbf83ef1db48"
     },
     {
-      "name": "ResearchSystem-Mobile-Formal-v1.0.0-Android.apk",
-      "sha256": "f8e5afaf50db01121e8a028a7957d448670313f901a58dda1bf124af1e96cada"
+      "name": "ResearchSystem-Mobile-Formal-v1.0.1-Android.apk",
+      "sha256": "beacb49d852e19dad2f5dbad8ceeddfe1e65b183ed1cd2c6bd9ce0b42291af77"
     },
     {
       "name": "SHA256SUMS.txt"
