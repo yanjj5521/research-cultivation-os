@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "product": "wendao-research",
+  "source_commit": "cf1724f4c0013b9bdd691c6ac516b08e336ed296",
+  "source_run": 30689657890,
+  "archives": [
+    {
+      "name": "wendao-formal-windows.zip",
+      "url": "https://sdmntprwestcentralus.oaiusercontent.com/files/00000000-5084-81fb-b2e7-d5f20f65b470/raw?se=2026-08-01T07:33:42Z&sp=r&sv=2026-02-06&sr=b&scid=de1078e0-f051-45cf-9b1f-66414fa1fd4a&skoid=80e81ea6-3c08-46f9-bd84-b87176742bcd&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-08-01T01:32:06Z&ske=2026-08-02T01:32:06Z&sks=b&skv=2026-02-06&sig=g/TGEHZJrwi0WwRrWagLsQP6zf7J5m9rdCvUf44wNhs%3D",
+      "sha256": "406851a4c8321258d621825ed9bdefaf09d3a57d61d079afe6b4580a5804922f"
+    },
+    {
+      "name": "wendao-formal-android.zip",
+      "url": "https://sdmntprwestcentralus.oaiusercontent.com/files/00000000-5198-81fb-b5bc-7d54f58dc1ba/raw?se=2026-08-01T07:33:43Z&sp=r&sv=2026-02-06&sr=b&scid=2e7b50c8-07bb-4511-9cf4-5be172555f72&skoid=80e81ea6-3c08-46f9-bd84-b87176742bcd&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-08-01T01:27:51Z&ske=2026-08-02T01:27:51Z&sks=b&skv=2026-02-06&sig=L845mjulxmPxe1JaOXIAOYB8rpwBcajwky%2BFy9BZrEE%3D",
+      "sha256": "cb3399e15780d497fcfc58d0585cdb3daa879cc0e8adb4642c3150e22772ac4f"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "WendaoResearch-Formal-v1.0.0-Windows-x64.exe",
+      "sha256": "c753b9b8e335ae91009a77b9ef7206a3976d06f2b81d4c282b159d43d2039187"
+    },
+    {
+      "name": "WendaoResearch-Formal-v1.0.0-Portable.zip",
+      "sha256": "c081872740e607662926cd0937c2797189a279a8376f12d53e28881f8b0276e4"
+    },
+    {
+      "name": "WendaoResearch-Mobile-Formal-v1.0.0-Android.apk",
+      "sha256": "1e44deae4a30dd9a8250c7b8916de8147f3794f25e5254e8605ca4547990dbbc"
+    }
+  ]
+}
