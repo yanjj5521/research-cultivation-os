@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wendao-research-v3"
-version = "3.6.0"
+version = "3.6.1"
 description = "问道科研 3.0 体验：模块化内核与全新数据库"
 readme = "README.md"
 requires-python = ">=3.11"

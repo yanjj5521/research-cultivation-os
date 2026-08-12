@@ -250,15 +250,15 @@ else:
         output = io.BytesIO()
         console = io.TextIOWrapper(output, encoding="cp1252", errors="strict")
         with patch.object(sys, "stdout", console):
-            safe_print("问道科研 3.6.0 self-check PASS")
+            safe_print("问道科研 3.6.1 self-check PASS")
             console.flush()
         self.assertEqual(
             output.getvalue().decode("cp1252").strip(),
-            r"\u95ee\u9053\u79d1\u7814 3.6.0 self-check PASS",
+            r"\u95ee\u9053\u79d1\u7814 3.6.1 self-check PASS",
         )
 
     def test_release_shell_is_single_program_and_clean_identity(self) -> None:
-        self.assertEqual((ROOT / "VERSION").read_text().strip(), "3.6.0")
+        self.assertEqual((ROOT / "VERSION").read_text().strip(), "3.6.1")
         spec = (ROOT / "packaging" / "WendaoResearchV3.spec").read_text(
             encoding="utf-8"
         )
