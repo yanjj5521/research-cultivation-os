@@ -1,4 +1,4 @@
-"""A lightweight, resizable and animated desktop research companion."""
+"""A small, low-distraction 3D desktop research companion."""
 from __future__ import annotations
 
 import base64
@@ -11,6 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageTk
 
+from db import connect
 from runtime_paths import USER_CONFIG_DIR
 
 
@@ -22,10 +23,13 @@ PET_LINES = (
     "不要替论文补结论，先找它的证据。",
 )
 SETTINGS_PATH = USER_CONFIG_DIR / "desktop_pet.json"
+DEFAULT_SIZE = 132
+MIN_SIZE = 92
+MAX_SIZE = 260
 
 
 def _asset_path() -> Path:
-    bundled = Path(__file__).resolve().parent / "static" / "pet" / "lingzhi_assistant.png"
+    bundled = Path(__file__).resolve().parent / "static" / "pet" / "lingzhi_3d.png"
     if bundled.exists():
         return bundled
     encoded = bundled.with_suffix(".png.b64")
@@ -37,17 +41,45 @@ def _asset_path() -> Path:
 
 def _load_size() -> int:
     try:
-        return max(110, min(480, int(json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("size", 220))))
+        settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        # The previous flat pet was much larger.  One-time migration starts the
+        # new 3D companion small, while later user resizing is always retained.
+        if settings.get("appearance") != "3d":
+            return DEFAULT_SIZE
+        return max(MIN_SIZE, min(MAX_SIZE, int(settings.get("size", DEFAULT_SIZE))))
     except (OSError, ValueError, json.JSONDecodeError):
-        return 220
+        return DEFAULT_SIZE
 
 
 def _save_size(size: int) -> None:
     try:
         USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        SETTINGS_PATH.write_text(json.dumps({"size": size}, ensure_ascii=False), encoding="utf-8")
+        SETTINGS_PATH.write_text(
+            json.dumps({"appearance": "3d", "size": size}, ensure_ascii=False), encoding="utf-8"
+        )
     except OSError:
         pass
+
+
+def _today_status() -> str:
+    """Read a tiny useful signal without making the pet another dashboard."""
+    try:
+        with connect() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) total,
+                          COALESCE(SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END), 0) done
+                     FROM daily_missions m
+                     JOIN study_plans p ON p.id=m.plan_id
+                    WHERE p.status='active' AND m.day_index=p.current_day AND m.optional=0"""
+            ).fetchone()
+        total, done = int(row["total"]), int(row["done"])
+        if total <= 0:
+            return "今天还没有必做任务。先写下一个 10 分钟的小动作吧。"
+        if done >= total:
+            return "今日必做已完成。收下这份轻松，再决定要不要多走一步。"
+        return f"今日进度 {done}/{total}。只推进下一项，不必一次做完。"
+    except Exception:
+        return random.choice(PET_LINES)
 
 
 def run_pet() -> None:
@@ -78,8 +110,8 @@ def run_pet() -> None:
     def render(*, animate: bool = True) -> None:
         nonlocal phase
         wobble = 1.0 + (0.025 * math.sin(phase) if animate and not dragging else 0)
-        width = max(90, round(desired_size * wobble))
-        height = max(90, round(original.height * width / max(original.width, 1)))
+        width = max(MIN_SIZE, round(desired_size * wobble))
+        height = max(MIN_SIZE, round(original.height * width / max(original.width, 1)))
         frame = original.resize((width, height), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(frame)
         image_label.configure(image=photo)
@@ -92,13 +124,18 @@ def run_pet() -> None:
         root.after(130, animate)
 
     def show_hint(_event=None) -> None:
+        hint.configure(text=f"灵知 · {_today_status()}")
+        hint.place(x=4, y=max(0, image_label.winfo_height() - 6), anchor="sw")
+        root.after(4200, hint.place_forget)
+
+    def show_research_hint() -> None:
         hint.configure(text=f"灵知 · {random.choice(PET_LINES)}")
         hint.place(x=4, y=max(0, image_label.winfo_height() - 6), anchor="sw")
         root.after(4200, hint.place_forget)
 
     def resize(delta: int) -> None:
         nonlocal desired_size
-        desired_size = max(110, min(480, desired_size + delta))
+        desired_size = max(MIN_SIZE, min(MAX_SIZE, desired_size + delta))
         _save_size(desired_size)
         render(animate=False)
         hint.configure(text=f"灵知 · 当前大小 {desired_size}px")
@@ -123,9 +160,12 @@ def run_pet() -> None:
     def popup(event) -> None:
         menu.tk_popup(event.x_root, event.y_root)
 
-    menu.add_command(label="放大", command=lambda: resize(30))
-    menu.add_command(label="缩小", command=lambda: resize(-30))
-    menu.add_command(label="恢复默认大小", command=lambda: resize(220 - desired_size))
+    menu.add_command(label="查看今日进度", command=show_hint)
+    menu.add_command(label="给我一句研究提示", command=show_research_hint)
+    menu.add_separator()
+    menu.add_command(label="放大", command=lambda: resize(16))
+    menu.add_command(label="缩小", command=lambda: resize(-16))
+    menu.add_command(label="恢复小尺寸", command=lambda: resize(DEFAULT_SIZE - desired_size))
     menu.add_separator()
     menu.add_command(label="关闭灵知", command=root.destroy)
     image_label.bind("<Button-1>", show_hint)
