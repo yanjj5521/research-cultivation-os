@@ -1,27 +1,113 @@
-# 问道科研 · v3.1.0 自定义洞府正式版
+# 问道科研 3.6 · 科研能力训练与同行互助版 v3.6.0
 
-当前稳定版本：**问道科研 v3.1.0**
+## 3.6 学习第一、同行轻协作
 
-这是面向实际使用的公开下载入口。正式源码只在私有开发仓库维护；公开仓库仅保留稳定说明、校验信息和可直接使用的发行文件。
+- 默认导航压缩为“文献汇报、实用工作台、课题推进、知识库、检索、随手归档”；每日任务、计划和游戏化保留为可选层，不再挤占学习入口。
+- 闭关静修支持本地壁纸库：导入新图不会覆盖旧图，可随时切换；壁纸绝不上传同行会。
+- 同行会新增论坛、轻量聊天和坊市。论坛用于沉淀问题与方法，聊天只处理短沟通；坊市可发修为、灵石或材料红包，并创建双方确认后才成交的虚拟资产交换。
+- 同行会不支持真实货币、也不上传私人科研文件；修为仅是同行会内的虚拟资产，不改动本地真实学习进度。
 
-## 下载
+## 3.5 图优先科研工作流
 
-- [Windows 单程序](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/WendaoResearch-v3.1.0-Windows-x64.exe)
-- [Windows 便携包](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/WendaoResearch-v3.1.0-Portable.zip)
-- [Android 安装包](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/WendaoResearch-Mobile-v3.1.0-Android.apk)
-- [SHA-256 校验文件](https://github.com/yanjj5521/research-cultivation-os/releases/download/wendao-v3.1.0/SHA256SUMS.txt)
-- [完整使用手册](docs/使用手册.md)
+- 首页与导航默认把“文献阅读与汇报 → 课题推进 → 知识库”置于最前；任务、计划和游戏化功能降为可选辅助，不再构成科研阻碍。
+- 上传并归档 PDF 后，可提取候选图（含矢量图页面渲染）、选择关键图、生成 8 页汇报骨架、3 分钟口述稿和图片汇报 PPT。
+- 汇报与随手记录都保存为可编辑知识卡；每日任务的文字交付也会产生可持续修订的归档。
+- 同行会按登录身份在同一个 EXE 中显示管理员或成员界面；管理员可从界面启动本机中心，不再需要单独 CMD。
+- 灵知支持拖动、滚轮缩放、大小记忆、右键菜单和轻量呼吸浮动。
 
-Windows 只有一个 `WendaoResearchV3.exe`：双击进入个人端；需要团队中心时，使用便携包内的 `启动团队中心.cmd`，或执行 `WendaoResearchV3.exe --mode team`。
+## 3.4 桌面科研助手与文献汇报
 
-## v3.1.0 重点
+- 默认以独立、可缩放的 Windows 应用窗口运行，不再自动打开外部浏览器；`--no-browser` 仅用于团队托管与自检。
+- 内置可拖动、可逗弄的桌面科研助手“灵知”：点击得到短暂的科研提醒，右键即可关闭，不会自动刷取任何资产。
+- 新增“文献研读与汇报”核心模块：用问题—方法—关键图—证据—结论—边界—课题连接的固定链条，生成 8 页汇报骨架和 3 分钟口述稿，并保存为可复用的文献汇报卡。
+- 文献模块与每日任务同为导航一级入口；AI 协作页仍可作为补充，而不替代原文和证据核对。
 
-- 管理员控制台与普通成员同行厅明确分流，服务端继续强制鉴权。
-- 五档界面密度；主页组件可显隐、拖动、缩放并一键智能排版。
-- 390 px 窄屏自动单列，无横向溢出。
-- 五问雷劫、炼丹炉、成就图鉴和彩蛋柜全面扩充。
-- 修复冻结程序上传新版 ZIP 的 Internal Server Error。
-- Windows、Android、个人端与同行会统一使用水彩金丹图标。
-- 继续使用独立的 `wendao-v3-clean.db`，不读取或迁移旧版数据库。
+## 3.3 静修与同行福利
 
-Windows 暂无商业代码签名，首次运行可能出现 SmartScreen；Android 为侧载安装包。当前 Latest 为 `wendao-v3.1.0`。
+- 新增“挂机静修”沉浸页：可选横向或竖向排布，内置曙光山门、星夜观测台、素纸静室三张壁纸，也可导入自己的图片；壁纸只存于本机用户数据。
+- 挂机页仅用于专注计时，绝不自动增加修为、灵石或材料。
+- 管理员可向其他活跃成员发放受限福利：单次修为最多 60、灵石最多 50、每种材料最多 6；同一成员每天最多 3 次，发放与领取均留有审计记录。
+- 同行会增加“检查新版本”与“一键更新”入口。成员同步后可直接校验、备份个人数据库、安装 `Team-Update.zip` 并重启；`user_data` 不会被覆盖。
+
+## 3.2 统一入口
+
+- 同行会已成为问道科研内置模块：常规使用只启动一个 `WendaoResearchV3.exe`。
+- 个人知识库、完整备份和结构化导出统一位于“系统设置与备份”；同行会不重复导出个人数据。
+- 管理员发布时上传 `WendaoResearch-v3.6.0-Team-Update.zip`；它不包含任何 `user_data`，成员更新不会覆盖个人数据库。
+- 管理员从“同行会”页启动十人以内的本机中心；命令行 `--mode team` 仅保留给部署和自动化。
+
+本版本以原始 `v3.0.0` 为产品基线：界面、页面层级、文案、表单、URL 和功能规则保持不变；底层改为领域模块，全新数据库从零创建，并使用当前正式版的轻量环境动效。
+
+## 使用边界
+
+- 不读取、不迁移、不回填任何旧版本数据库。
+- Windows 普通模式的数据位于 `%LOCALAPPDATA%\WendaoResearchV3`。
+- 便携模式的数据位于程序旁的 `user_data`。
+- 主数据库固定为 `instance/wendao-v3-clean.db`。
+- Android 包名为 `cn.wendao.research.v3.mobile`，不接管旧应用数据。
+
+需要旧资料时，请在旧版中导出可读文件，再由本人筛选后放入本版；不要复制旧 SQLite 文件。
+
+## 保留的 3.0 体验
+
+- 山门首页、每日诗句、导航编排、三档动态效果。
+- 修炼任务、每日任务、3–7 天近期计划和真实交付。
+- 温故知新、秘境、雷劫、洞府、法器、炼丹与成就。
+- 课题推进、生涯罗盘、工作区和科研底座。
+- 知识库、论文发现、实验台账、数据集、MD/LAMMPS。
+- AI 协作、完整备份、个人主页与十人以内轻量团队中心。
+
+系统规则仍保留真实交付与跨天里程碑；但每日任务不再是科研准入条件，未导入计划时可直接用“随手推进”归档事实、判断或下一步。
+
+## 模块结构
+
+```text
+core/                 最终 Schema、干净播种、数据库与导航
+services/             计划、成长、经济、复盘、同步等领域服务
+features/             3.0 原有独立功能路由
+web/runtime.py        模板上下文与共享展示规则
+web/routes/           山门、知识、设置、分析、科研工具、科研底座
+web/app.py            应用装配
+launchers/            个人/团队统一启动与文件日志
+templates/ static/    原始 3.0 产品表面 + 独立新版动效层
+mobile/android/       独立身份的 Android 团队入口
+packaging/ tools/     单程序与四文件便携包构建
+```
+
+根目录 `app.py` 和 `db.py` 只保留兼容导出，不承载业务实现。
+
+## Windows 使用
+
+单程序：
+
+```text
+WendaoResearch-v3.6.0-Windows-x64.exe
+```
+
+双击后启动个人端。管理员在“同行会 → 启动本机同行会中心”托管团队；无需 CMD。命令行仅作为部署兼容入口：
+
+```text
+WendaoResearchV3.exe --mode team
+```
+
+便携包不再附带管理员 CMD 启动器。
+
+## 源码验证
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+.venv/bin/ruff check app.py db.py core web launchers run_local.py runtime_paths.py tools tests
+.venv/bin/python self_test.py
+.venv/bin/python hub_self_test.py
+.venv/bin/python online_integration_test.py
+```
+
+Windows 构建：
+
+```bash
+python tools/build.py --assemble
+```
+
+构建产物为一个个人/团队共用 EXE、便携 ZIP，以及可直接上传到同行会“版本中心”的 `Team-Update.zip`。更新包不包含 `user_data`。
